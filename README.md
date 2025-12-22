@@ -1,1 +1,1 @@
-# philia-mvp
+# Philia MVP — chat + pagamenti, Android-first
