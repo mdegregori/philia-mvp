@@ -1,4 +1,5 @@
 # Room — Panetteria
+Update panetteria room notes
 
 Persona reale:
 - Panettiere di quartiere
@@ -9,3 +10,4 @@ Problema quotidiano:
 - Vendite frammentate
 - Contanti, POS, app diverse
 - Tempo perso a fine giornata
+Note MVP: prima room reale per validazione.
