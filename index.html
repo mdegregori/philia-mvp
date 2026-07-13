@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philia SuperApp - Marketplace Decentralizzato v1.1</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 32px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .balance-display {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .balance-amount { font-size: 36px; font-weight: bold; margin: 10px 0; }
+        .balance-details { display: flex; gap: 20px; font-size: 14px; opacity: 0.9; }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-bottom: 10px;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        button.secondary { background: #f0f0f0; color: #333; }
+        button.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        button.warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        button.danger { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
+        button.chat-btn { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); margin-top: 10px; }
+
+        /* Reputation Styles */
+        .reputation-display {
+            background: linear-gradient(135deg, #f5af19 0%, #f12711 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .reputation-score { font-size: 48px; font-weight: bold; margin: 10px 0; }
+        .reputation-level { font-size: 24px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        .reputation-details { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
+        .rep-stat { background: #f0f0f0; padding: 15px; border-radius: 8px; text-align: center; }
+        .rep-stat-value { font-size: 24px; font-weight: bold; color: #667eea; }
+        .rep-stat-label { font-size: 12px; color: #666; margin-top: 5px; }
+
+        /* Trust Badge */
+        .trust-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .trust-badge.verified { background: #ffd700; color: #333; }
+        .trust-badge.trusted { background: #90ee90; color: #333; }
+        .trust-badge.established { background: #87ceeb; color: #333; }
+        .trust-badge.new { background: #d3d3d3; color: #333; }
+        .trust-badge.untrusted { background: #ff6b6b; color: white; }
+
+        /* Escrow Styles */
+        .escrow-card {
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .escrow-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .escrow-status { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .escrow-status.locked { background: #ffd700; color: #333; }
+        .escrow-status.released { background: #90ee90; color: #333; }
+        .escrow-status.disputed { background: #ff6b6b; color: white; }
+        .escrow-status.refunded { background: #87ceeb; color: #333; }
+        .escrow-details { font-size: 14px; color: #666; margin-bottom: 10px; }
+        .escrow-actions { display: flex; gap: 10px; }
+        .escrow-actions button { flex: 1; padding: 10px; font-size: 14px; margin: 0; }
+
+        /* Transaction History Styles */
+        .tx-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .tx-filters button {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 12px;
+            font-size: 12px;
+            margin: 0;
+            background: #f0f0f0;
+            color: #333;
+        }
+        .tx-filters button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .tx-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .tx-item {
+            background: #f9f9f9;
+            border-left: 4px solid #667eea;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .tx-item.payment { border-left-color: #f093fb; }
+        .tx-item.settle { border-left-color: #38ef7d; }
+        .tx-item.agreement { border-left-color: #f5576c; }
+        .tx-item.escrow { border-left-color: #ffd700; }
+        .tx-item.expired { border-left-color: #ff6b6b; opacity: 0.7; }
+        .tx-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .tx-type {
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #e0e0e0;
+        }
+        .tx-type.payment { background: #f093fb; color: white; }
+        .tx-type.settle { background: #38ef7d; color: #333; }
+        .tx-type.agreement { background: #f5576c; color: white; }
+        .tx-type.escrow_lock { background: #ffd700; color: #333; }
+        .tx-type.escrow_release { background: #90ee90; color: #333; }
+        .tx-type.escrow_dispute { background: #ff6b6b; color: white; }
+        .tx-type.room_create { background: #87ceeb; color: #333; }
+        .tx-type.message { background: #d3d3d3; color: #333; }
+        .tx-type.expired { background: #ff6b6b; color: white; }
+        .tx-amount { font-weight: bold; color: #667eea; }
+        .tx-amount.negative { color: #eb3349; }
+        .tx-amount.positive { color: #11998e; }
+        .tx-memo { color: #666; margin-top: 4px; font-style: italic; }
+        .tx-meta { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 6px; }
+        .tx-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .tx-status.pending { background: #ffd700; color: #333; }
+        .tx-status.settled { background: #90ee90; color: #333; }
+        .tx-status.expired { background: #ff6b6b; color: white; }
+        .tx-status.invalid { background: #d3d3d3; color: #333; }
+
+        /* ROOMS Styles */
+        .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .room-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .room-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .room-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }
+        .room-name { font-size: 20px; font-weight: bold; color: #333; margin-bottom: 5px; }
+        .room-category { display: inline-block; background: #667eea; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .room-price { font-size: 28px; font-weight: bold; color: #667eea; margin: 15px 0; }
+        .room-price span { font-size: 14px; color: #666; }
+        .room-description { color: #666; margin-bottom: 15px; line-height: 1.5; }
+        .room-owner { font-size: 12px; color: #999; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+
+        .message { padding: 12px; border-radius: 8px; margin-top: 15px; font-size: 14px; text-align: center; }
+        .message.success { background: #d4edda; color: #155724; }
+        .message.error { background: #f8d7da; color: #721c24; }
+        .message.info { background: #d1ecf1; color: #0c5460; }
+        .loading { text-align: center; padding: 20px; color: #666; }
+
+        /* Tooltip */
+        .tooltip-container { position: relative; display: inline-block; width: 100%; }
+        .tooltip-container .tooltip-text {
+            visibility: hidden;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip-container .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+        .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+
+        /* Chat Modal */
+        .chat-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .chat-modal.active { display: flex; align-items: center; justify-content: center; }
+        .chat-content { background: white; border-radius: 15px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 50px rgba(0,0,0,0.3); }
+        .chat-header { padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px 15px 0 0; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header h3 { margin: 0; font-size: 20px; }
+        .chat-close { background: rgba(255,255,255,0.2); border: none; color: white; width: 35px; height: 35px; border-radius: 50%; font-size: 20px; cursor: pointer; margin: 0; padding: 0; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #f5f5f5; min-height: 300px; }
+        .chat-bubble { margin-bottom: 15px; display: flex; flex-direction: column; }
+        .chat-bubble.sent { align-items: flex-end; }
+        .chat-bubble.received { align-items: flex-start; }
+        .bubble-content { max-width: 70%; padding: 12px 16px; border-radius: 18px; word-wrap: break-word; }
+        .chat-bubble.sent .bubble-content { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-bottom-right-radius: 4px; }
+        .chat-bubble.received .bubble-content { background: white; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .chat-bubble.agreement .bubble-content { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: 2px solid #fff; }
+        .bubble-time { font-size: 11px; color: #999; margin-top: 4px; }
+        .chat-input-area { padding: 15px; background: white; border-top: 1px solid #e0e0e0; display: flex; gap: 10px; }
+        .chat-input-area input { flex: 1; margin: 0; }
+        .chat-input-area button { width: auto; margin: 0; padding: 12px 24px; }
+
+        /* Booking Modal */
+        .booking-content { background: white; border-radius: 15px; width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 50px rgba(0,0,0,0.3); }
+        .booking-body { padding: 25px; background: white; overflow-y: auto; }
+        .booking-body label { font-size: 14px; color: #666; display: block; margin-bottom: 5px; font-weight: 600; }
+        .booking-body input[type="date"], .booking-body input[type="number"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; font-size: 16px; }
+        .booking-total-box { background: #f0f0f0; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; }
+        .booking-total-label { font-size: 14px; color: #666; }
+        .booking-total-amount { font-size: 24px; font-weight: bold; color: #667eea; margin-top: 5px; }
+
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .reputation-details { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏛️ Philia SuperApp v1.1</h1>
+        
+        <div class="grid">
+            <!-- Wallet Section -->
+            <div class="card">
+                <h2>👛 Il Mio Wallet</h2>
+                <div class="balance-display">
+                    <div>Saldo Disponibile</div>
+                    <div class="balance-amount" id="balance">--- Philia</div>
+                    <div class="balance-details">
+                        <div>Ledger: <span id="ledger">0</span></div>
+                        <div>Prenotati: <span id="reserved">0</span></div>
+                    </div>
+                </div>
+                
+                <input type="text" id="pubKey" readonly placeholder="Il tuo ID Pubblico">
+                <input type="text" id="privKeyImport" placeholder="Incolla qui la chiave privata per importare un wallet esistente">
+                <button onclick="importWallet()" class="secondary">📥 Importa Wallet Esistente</button>
+                <button onclick="generateWallet()">🔑 Genera Nuovo Wallet</button>
+                <button onclick="loadBalance()" class="secondary">🔄 Aggiorna Saldo</button>
+                
+                <div id="walletMessage"></div>
+            </div>
+
+            <!-- Reputation Section -->
+            <div class="card">
+                <h2>⭐ La Mia Reputazione</h2>
+                <div class="reputation-display" id="reputationDisplay" style="display: none;">
+                    <div>Punteggio Reputazione</div>
+                    <div class="reputation-score" id="repScore">0</div>
+                    <div class="reputation-level" id="repLevel">UNTRUSTED</div>
+                    <div style="margin-top: 10px; font-size: 14px;">
+                        Limite Transazione: <span id="repMaxAmount">0</span> Philia
+                    </div>
+                </div>
+                <div id="reputationPlaceholder" class="loading">
+                    Importa un wallet per vedere la tua reputazione
+                </div>
+                <button onclick="loadReputation()" class="secondary">📊 Aggiorna Reputazione</button>
+                
+                <div class="reputation-details" id="repDetails" style="display: none;">
+                    <div class="rep-stat">
+                        <div class="rep-stat-value" id="repSales">0</div>
+                        <div class="rep-stat-label">Vendite</div>
+                    </div>
+                    <div class="rep-stat">
+                        <div class="rep-stat-value" id="repPurchases">0</div>
+                        <div class="rep-stat-label">Acquisti</div>
+                    </div>
+                    <div class="rep-stat">
+                        <div class="rep-stat-value" id="repExpired">0</div>
+                        <div class="rep-stat-label">Scaduti</div>
+                    </div>
+                    <div class="rep-stat">
+                        <div class="rep-stat-value" id="repDisputes">0</div>
+                        <div class="rep-stat-label">Dispute</div>
+                    </div>
+                </div>
+                
+                <div id="reputationMessage"></div>
+            </div>
+
+            <!-- Escrow Section -->
+            <div class="card">
+                <h2>🔒 I Miei Escrow</h2>
+                <div id="escrowForm">
+    <input type="text" id="escrowSellerId" placeholder="ID Pubblico del Venditore">
+    <input type="number" id="escrowAmount" placeholder="Importo (Philia)">
+    <textarea id="escrowDescription" placeholder="Descrizione del bene/servizio" rows="3"></textarea>
+    <input type="text" id="escrowArbitrator" placeholder="ID Arbitro (opzionale, lascia vuoto per default)">
+    <button onclick="createEscrow()" class="warning">🔒 Crea Escrow</button>
+</div>
+                
+                <div style="margin-top: 20px; border-top: 2px solid #f0f0f0; padding-top: 20px;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Gestisci Escrow Esistente</h3>
+                    <input type="text" id="escrowIdLookup" placeholder="Inserisci Escrow ID">
+                    <button onclick="lookupEscrow()" class="secondary">🔍 Cerca Escrow</button>
+                    
+                    <div id="escrowDetails" style="display: none; margin-top: 20px;">
+                        <div class="escrow-card">
+                            <div class="escrow-header">
+                                <strong id="escrowDetailId">-</strong>
+                                <span class="escrow-status locked" id="escrowDetailStatus">LOCKED</span>
+                            </div>
+                            <div class="escrow-details">
+                                <div><strong>Importo:</strong> <span id="escrowDetailAmount">0</span> Philia</div>
+                                <div><strong>Venditore:</strong> <span id="escrowDetailSeller">-</span></div>
+                                <div><strong>Descrizione:</strong> <span id="escrowDetailDesc">-</span></div>
+                                <div><strong>Firme:</strong> <span id="escrowDetailSigs">0/2</span></div>
+                            </div>
+                            <div class="escrow-actions">
+                                <button onclick="releaseEscrow()" class="success">✍️ Firma Rilascio</button>
+                                <button onclick="disputeEscrow()" class="danger">⚠️ Apri Disputa</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="escrowMessage"></div>
+            </div>
+
+            <!-- Quick Payment Section -->
+            <div class="card">
+                <h2>💸 Pagamento Rapido</h2>
+                <input type="text" id="recipient" placeholder="ID Pubblico Destinatario">
+                <input type="number" id="amount" placeholder="Importo (Philia)">
+                <button onclick="sendPayment('PAYMENT')">1. Prenota (PAYMENT)</button>
+                <button onclick="sendPayment('SETTLE')" class="success">2. Regola (SETTLE)</button>
+                
+                <div id="paymentMessage"></div>
+            </div>
+
+            <!-- Transaction History Section (NUOVA) -->
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2>📜 Le Mie Transazioni</h2>
+                <div class="tx-filters">
+                    <button class="active" onclick="filterTransactions('ALL', this)">Tutte</button>
+                    <button onclick="filterTransactions('PAYMENT', this)">Pagamenti</button>
+                    <button onclick="filterTransactions('SETTLE', this)">Regolazioni</button>
+                    <button onclick="filterTransactions('AGREEMENT', this)">Accordi</button>
+                    <button onclick="filterTransactions('ESCROW', this)">Escrow</button>
+                    <button onclick="filterTransactions('ROOM', this)">Rooms</button>
+                </div>
+                <div id="txList" class="tx-list">
+                    <div class="loading">Importa un wallet per vedere lo storico</div>
+                </div>
+                <button onclick="loadTransactions()" class="secondary" style="margin-top: 15px;">🔄 Aggiorna Storico</button>
+<button onclick="syncDAG()" class="success" style="margin-top: 10px;">🔄 Sincronizza DAG dalla Rete</button>
+<div id="syncMessage"></div>
+                <div id="txMessage"></div>
+            </div>
+        </div>
+
+        <!-- ROOMS Marketplace Section -->
+        <div class="card">
+            <h2>🏪 Marketplace ROOMS</h2>
+            <div class="tooltip-container">
+                <button onclick="loadRoomsWithReputation()" class="secondary">🔄 Sincronizza ROOMS dalla Rete P2P</button>
+                <span class="tooltip-text">Scarica le room disponibili dalla rete decentralizzata</span>
+            </div>
+            
+            <div id="roomsContainer" class="rooms-grid">
+                <div class="loading">Clicca "Sincronizza ROOMS" per vedere le disponibilità</div>
+            </div>
+            
+            <div id="roomsMessage"></div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div id="chatModal" class="chat-modal">
+        <div class="chat-content">
+            <div class="chat-header">
+                <h3 id="chatTitle">💬 Chat</h3>
+                <button class="chat-close" onclick="closeChat()">×</button>
+            </div>
+            <div id="chatMessages" class="chat-messages">
+                <div class="loading">Caricamento messaggi...</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Scrivi un messaggio...">
+                <button onclick="sendMessage()">Invia</button>
+                <button onclick="sendAgreement()" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); width: auto; padding: 12px 16px; margin-left: 5px;"> Accordo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="bookingModal" class="chat-modal">
+        <div class="booking-content">
+            <div class="chat-header">
+                <h3 id="bookingTitle">🏨 Prenota Room</h3>
+                <button class="chat-close" onclick="closeBookingModal()">×</button>
+            </div>
+            <div class="booking-body">
+                <p id="bookingRoomName" style="font-size: 18px; font-weight: bold; margin-bottom: 10px;"></p>
+                <p>Prezzo per notte: <span id="bookingPrice" style="font-weight: bold; color: #667eea;"></span> Philia</p>
+                <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+                
+                <label>Data Check-in:</label>
+                <input type="date" id="bookingCheckIn">
+                
+                <label>Numero di notti:</label>
+                <input type="number" id="bookingNights" min="1" value="1" oninput="updateBookingTotal()">
+                
+                <div class="booking-total-box">
+                    <div class="booking-total-label">Totale da pagare:</div>
+                    <div id="bookingTotal" class="booking-total-amount">0 Philia</div>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <button onclick="confirmBooking()" class="success" style="margin:0; width: 100%;">✅ Conferma Prenotazione</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/v1';
+        let currentPrivateKey = null;
+        let currentChatRoom = null;
+        let loadedRooms = [];
+        let currentBooking = null;
+        let currentNonce = 0;
+        let currentEscrowId = null;
+        let allTransactions = [];
+        let currentTxFilter = 'ALL';
+
+        // --- WALLET ---
+
+function saveNonce() {
+    const pubKey = document.getElementById('pubKey').value;
+    if (pubKey && currentNonce > 0) {
+        localStorage.setItem('nonce_' + pubKey, currentNonce);
+    }
+}
+
+function loadNonce(pubKey) {
+    const saved = localStorage.getItem('nonce_' + pubKey);
+    currentNonce = saved ? parseInt(saved) : 0;
+}
+            function importWallet() {
+            const privKeyHex = document.getElementById('privKeyImport').value.trim();
+            if (!privKeyHex || privKeyHex.length !== 128) {
+                showMessage('walletMessage', 'Chiave privata non valida (deve essere 128 caratteri hex)', 'error');
+                return;
+            }
+            const privKeyBytes = new Uint8Array(64);
+            for (let i = 0; i < 64; i++) {
+                privKeyBytes[i] = parseInt(privKeyHex.substr(i * 2, 2), 16);
+            }
+            
+            // Validazione forte: prova a generare il keypair
+            try {
+                const keyPair = nacl.sign.keyPair.fromSecretKey(privKeyBytes);
+                currentPrivateKey = privKeyBytes;
+                const pubKey = Array.from(keyPair.publicKey)
+                    .map(b => b.toString(16).padStart(2, '0')).join('');
+                document.getElementById('pubKey').value = pubKey;
+                currentNonce = 0;
+                loadNonce(pubKey);
+                showMessage('walletMessage', '✅ Wallet importato con successo!', 'success');
+                setTimeout(() => { loadBalance(); loadReputation(); loadTransactions(); }, 500);
+            } catch (e) {
+                showMessage('walletMessage', 'Chiave privata non valida (non è una chiave Ed25519 valida)', 'error');
+                return;
+            }
+        }
+
+        async function syncDAG() {
+            const syncMsg = document.getElementById('syncMessage');
+            if (!syncMsg) return;
+            
+            syncMsg.textContent = '🔄 Avvio sincronizzazione...';
+            syncMsg.className = 'message info';
+            
+            try {
+                const headerRes = await fetch(`${API_BASE}/sync/header`);
+                const headerData = await headerRes.json();
+                
+                if (!headerData.success) {
+                    syncMsg.textContent = '❌ Errore nel recupero header';
+                    syncMsg.className = 'message error';
+                    return;
+                }
+                
+                const totalEvents = headerData.data.total_events;
+                syncMsg.textContent = `📊 Server ha ${totalEvents} eventi. Avvio download...`;
+                
+                let fromID = '';
+                let downloaded = 0;
+                let allEvents = [];
+                
+                while (downloaded < totalEvents) {
+                    const url = fromID 
+                        ? `${API_BASE}/sync/events?from=${fromID}&limit=100`
+                        : `${API_BASE}/sync/events?limit=100`;
+                    
+                    const eventsRes = await fetch(url);
+                    const eventsData = await eventsRes.json();
+                    
+                    if (!eventsData.success || !eventsData.data || eventsData.data.length === 0) {
+                        break;
+                    }
+                    
+                    allEvents = allEvents.concat(eventsData.data);
+                    downloaded += eventsData.data.length;
+                    fromID = eventsData.data[eventsData.data.length - 1].id;
+                    
+                    syncMsg.textContent = `📥 Scaricati ${downloaded}/${totalEvents} eventi...`;
+                    
+                    if (eventsData.data.length < 100) break;
+                }
+                
+                const pubKey = document.getElementById('pubKey').value;
+                localStorage.setItem('dag_events_' + pubKey, JSON.stringify(allEvents));
+                
+                syncMsg.textContent = `✅ Sincronizzazione completata! ${downloaded} eventi scaricati.`;
+                syncMsg.className = 'message success';
+                loadTransactions();
+                
+            } catch (error) {
+                syncMsg.textContent = '❌ Errore: ' + error.message;
+                syncMsg.className = 'message error';
+            }
+        }
+
+        function generateWallet() {
+            const keyPair = nacl.sign.keyPair();
+            currentPrivateKey = keyPair.secretKey;
+            const pubKeyHex = Array.from(keyPair.publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
+            const privKeyHex = Array.from(currentPrivateKey).map(b => b.toString(16).padStart(2, '0')).join('');
+            document.getElementById('pubKey').value = pubKeyHex;
+            document.getElementById('privKeyImport').value = privKeyHex;
+            document.getElementById('privKeyImport').select();
+            currentNonce = 0;
+            showMessage('walletMessage', '✅ Wallet generato! COPIA LA CHIAVE PRIVATA ORA!', 'success');
+        }
+
+        function getNextNonce() { currentNonce++; return currentNonce; }
+
+        function buildAndSignEvent(type, sender, recipient, amount, memo = '', ttlSeconds = 0) {
+            const nonce = getNextNonce();
+            const timestamp = Date.now() * 1000000;
+            const event = {
+                type, parent_hash: "", sender, recipient, amount, timestamp, nonce,
+                ttl_seconds: ttlSeconds,
+                expires_at: ttlSeconds > 0 ? timestamp + (ttlSeconds * 1000000000) : 0,
+                memo, status: "PENDING", pub_key: sender, signature: "", id: ""
+            };
+            const dataToHash = `${event.type}|${event.parent_hash}|${event.sender}|${event.recipient}|${event.amount}|${event.timestamp}|${event.nonce}|${event.ttl_seconds}|${event.memo}`;
+            event.id = sha256(dataToHash);
+            const idBytes = new TextEncoder().encode(event.id);
+            const signature = nacl.sign.detached(idBytes, currentPrivateKey);
+            event.signature = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+saveNonce();
+            return event;
+        }
+
+        function showMessage(elementId, text, type = 'info') {
+            const el = document.getElementById(elementId);
+            el.textContent = text;
+            el.className = `message ${type}`;
+            setTimeout(() => { el.textContent = ''; el.className = 'message'; }, 5000);
+        }
+
+        // --- BALANCE ---
+        async function loadBalance() {
+            const pubKey = document.getElementById('pubKey').value;
+            if (!pubKey) { showMessage('walletMessage', 'Genera prima un wallet!', 'error'); return; }
+            try {
+                const response = await fetch(`${API_BASE}/balance?id=${pubKey}`);
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('balance').textContent = `${data.data.available} Philia`;
+                    document.getElementById('ledger').textContent = data.data.ledger;
+                    document.getElementById('reserved').textContent = data.data.reserved;
+                }
+            } catch (error) { showMessage('walletMessage', 'Errore di connessione', 'error'); }
+        }
+
+        // --- REPUTATION ---
+        async function loadReputation() {
+            const pubKey = document.getElementById('pubKey').value;
+            if (!pubKey) { showMessage('reputationMessage', 'Genera prima un wallet!', 'error'); return; }
+            try {
+                const response = await fetch(`${API_BASE}/reputation?id=${pubKey}`);
+                const data = await response.json();
+                if (data.success) {
+                    const rep = data.data;
+                    document.getElementById('reputationDisplay').style.display = 'block';
+                    document.getElementById('reputationPlaceholder').style.display = 'none';
+                    document.getElementById('repDetails').style.display = 'grid';
+                    document.getElementById('repScore').textContent = rep.score;
+                    document.getElementById('repLevel').textContent = rep.trust_level;
+                    document.getElementById('repMaxAmount').textContent = rep.max_transaction;
+                    document.getElementById('repSales').textContent = rep.completed_sales;
+                    document.getElementById('repPurchases').textContent = rep.completed_purchases;
+                    document.getElementById('repExpired').textContent = rep.expired_payments;
+                    document.getElementById('repDisputes').textContent = rep.disputes_lost;
+                    
+                    const repDisplay = document.getElementById('reputationDisplay');
+                    const colors = {
+                        'VERIFIED': 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)',
+                        'TRUSTED': 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                        'ESTABLISHED': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        'NEW': 'linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%)',
+                        'UNTRUSTED': 'linear-gradient(135deg, #eb3349 0%, #f45c43 100%)'
+                    };
+                    repDisplay.style.background = colors[rep.trust_level] || colors['UNTRUSTED'];
+                }
+            } catch (error) { showMessage('reputationMessage', 'Errore di connessione', 'error'); }
+        }
+
+        // --- TRANSACTIONS (NUOVO) ---
+        async function loadTransactions() {
+            const pubKey = document.getElementById('pubKey').value;
+            if (!pubKey) { showMessage('txMessage', 'Genera prima un wallet!', 'error'); return; }
+            
+            const txList = document.getElementById('txList');
+            txList.innerHTML = '<div class="loading">Caricamento transazioni...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/transactions?id=${pubKey}`);
+                const data = await response.json();
+                
+                if (data.success && data.data) {
+                    allTransactions = data.data;
+                    renderTransactions();
+                } else {
+                    txList.innerHTML = '<div class="loading">Nessuna transazione trovata</div>';
+                }
+            } catch (error) {
+                txList.innerHTML = '<div class="loading">Errore di connessione</div>';
+            }
+        }
+
+        function filterTransactions(type, btn) {
+            currentTxFilter = type;
+            document.querySelectorAll('.tx-filters button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderTransactions();
+        }
+
+        function renderTransactions() {
+            const txList = document.getElementById('txList');
+            const myId = document.getElementById('pubKey').value;
+            
+            let filtered = allTransactions;
+            if (currentTxFilter !== 'ALL') {
+                if (currentTxFilter === 'ESCROW') {
+                    filtered = allTransactions.filter(t => t.type.startsWith('ESCROW'));
+                } else if (currentTxFilter === 'ROOM') {
+                    filtered = allTransactions.filter(t => t.type.startsWith('ROOM'));
+                } else {
+                    filtered = allTransactions.filter(t => t.type === currentTxFilter);
+                }
+            }
+            
+            if (filtered.length === 0) {
+                txList.innerHTML = '<div class="loading">Nessuna transazione per questo filtro</div>';
+                return;
+            }
+            
+            txList.innerHTML = '';
+            filtered.forEach(tx => {
+                const item = createTransactionItem(tx, myId);
+                txList.appendChild(item);
+            });
+        }
+
+        function createTransactionItem(tx, myId) {
+            const div = document.createElement('div');
+            const isSent = tx.sender === myId;
+            const typeClass = tx.type.toLowerCase().replace(' ', '_');
+            const statusClass = (tx.status || 'pending').toLowerCase();
+            
+            let amountClass = '';
+            let amountText = '';
+            if (tx.amount > 0) {
+                if (tx.type === 'SETTLE') {
+                    amountClass = isSent ? 'negative' : 'positive';
+                    amountText = isSent ? `-${tx.amount}` : `+${tx.amount}`;
+                } else if (tx.type === 'PAYMENT') {
+                    amountClass = isSent ? 'negative' : '';
+                    amountText = isSent ? `-${tx.amount} (prenotati)` : `${tx.amount} (in arrivo)`;
+                } else {
+                    amountText = `${tx.amount}`;
+                }
+            }
+            
+            const time = new Date(tx.timestamp / 1000000).toLocaleString('it-IT', { 
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+            });
+            
+            const counterparty = isSent ? tx.recipient : tx.sender;
+            const counterpartyShort = counterparty ? counterparty.substring(0, 12) + '...' : '-';
+            
+            let memoDisplay = '';
+            if (tx.memo) {
+                try {
+                    const parsed = JSON.parse(tx.memo);
+                    if (parsed.room_name) memoDisplay = `🏨 ${parsed.room_name} - ${parsed.nights} notti`;
+                    else if (parsed.description) memoDisplay = parsed.description;
+                    else if (parsed.escrow_id) memoDisplay = `Escrow: ${parsed.escrow_id.substring(0, 12)}...`;
+                } catch (e) {
+                    memoDisplay = tx.memo.substring(0, 60) + (tx.memo.length > 60 ? '...' : '');
+                }
+            }
+            
+            div.className = `tx-item ${typeClass} ${statusClass}`;
+            div.innerHTML = `
+                <div class="tx-header">
+                    <span class="tx-type ${typeClass}">${tx.type}</span>
+                    ${tx.amount > 0 ? `<span class="tx-amount ${amountClass}">${amountText} Philia</span>` : ''}
+                </div>
+                ${memoDisplay ? `<div class="tx-memo">${memoDisplay}</div>` : ''}
+                <div class="tx-meta">
+                    <span>${isSent ? '→' : '←'} ${counterpartyShort}</span>
+                    <span>${time}</span>
+                    <span class="tx-status ${statusClass}">${tx.status || 'PENDING'}</span>
+                </div>
+            `;
+            return div;
+        }
+
+        // --- PAYMENT ---
+        async function sendPayment(type) {
+            const sender = document.getElementById('pubKey').value;
+            const recipient = document.getElementById('recipient').value;
+            const amount = parseInt(document.getElementById('amount').value);
+            if (!sender || !currentPrivateKey) { showMessage('paymentMessage', 'Wallet non caricato!', 'error'); return; }
+            if (!recipient || !amount) { showMessage('paymentMessage', 'Compila tutti i campi!', 'error'); return; }
+            
+            const ttlSeconds = type === 'PAYMENT' ? 604800 : 0;
+            const event = buildAndSignEvent(type, sender, recipient, amount, '', ttlSeconds);
+            
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                showMessage('paymentMessage', data.message, data.success ? 'success' : 'error');
+                if (data.success) { loadBalance(); loadReputation(); loadTransactions(); }
+            } catch (error) { showMessage('paymentMessage', 'Errore di connessione', 'error'); }
+        }
+
+        // --- ESCROW ---
+        async function createEscrow() {
+            const sellerId = document.getElementById('escrowSellerId').value.trim();
+            const amount = parseInt(document.getElementById('escrowAmount').value);
+            const description = document.getElementById('escrowDescription').value.trim();
+            if (!sellerId || !amount || !description) { showMessage('escrowMessage', 'Compila tutti i campi!', 'error'); return; }
+            const sender = document.getElementById('pubKey').value;
+            if (!sender || !currentPrivateKey) { showMessage('escrowMessage', 'Wallet non caricato!', 'error'); return; }
+            
+            const escrowId = `esc_${sender.substring(0, 8)}_${Date.now()}`;
+            // Ottieni l'arbitro dal form, o usa un default
+const arbitratorInput = document.getElementById('escrowArbitrator').value.trim();
+const arbitratorId = arbitratorInput || "0000000000000000000000000000000000000000000000000000000000000000";
+
+const escrow = {
+    id: escrowId, buyer: sender, seller: sellerId,
+    arbitrator: arbitratorId,
+    amount, description, required_sigs: 2, signatures: {},
+    created_at: Date.now() * 1000000,
+    expires_at: (Date.now() + 7 * 24 * 60 * 60 * 1000) * 1000000
+};
+            
+            const event = buildAndSignEvent('ESCROW_LOCK', sender, sellerId, amount, JSON.stringify(escrow));
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('escrowMessage', `✅ Escrow creato: ${escrowId}`, 'success');
+                    document.getElementById('escrowSellerId').value = '';
+document.getElementById('escrowAmount').value = '';
+document.getElementById('escrowDescription').value = '';
+document.getElementById('escrowArbitrator').value = '';  // Aggiungi questa riga
+                    loadBalance(); loadTransactions();
+                } else { showMessage('escrowMessage', `Errore: ${data.message}`, 'error'); }
+            } catch (error) { showMessage('escrowMessage', 'Errore di connessione', 'error'); }
+        }
+
+        async function lookupEscrow() {
+            const escrowId = document.getElementById('escrowIdLookup').value.trim();
+            if (!escrowId) { showMessage('escrowMessage', 'Inserisci un Escrow ID!', 'error'); return; }
+            try {
+                const response = await fetch(`${API_BASE}/escrow?id=${escrowId}`);
+                const data = await response.json();
+                if (data.success) {
+                    const escrow = data.data;
+                    currentEscrowId = escrowId;
+                    document.getElementById('escrowDetails').style.display = 'block';
+                    document.getElementById('escrowDetailId').textContent = escrow.id.substring(0, 16) + '...';
+                    document.getElementById('escrowDetailAmount').textContent = escrow.amount;
+                    document.getElementById('escrowDetailSeller').textContent = escrow.seller.substring(0, 16) + '...';
+                    document.getElementById('escrowDetailDesc').textContent = escrow.description;
+                    document.getElementById('escrowDetailSigs').textContent = `${Object.keys(escrow.signatures || {}).length}/${escrow.required_sigs}`;
+                    const statusEl = document.getElementById('escrowDetailStatus');
+                    statusEl.textContent = escrow.status;
+                    statusEl.className = `escrow-status ${escrow.status.toLowerCase()}`;
+                } else { showMessage('escrowMessage', data.message, 'error'); }
+            } catch (error) { showMessage('escrowMessage', 'Errore di connessione', 'error'); }
+        }
+
+        async function releaseEscrow() {
+            if (!currentEscrowId) { showMessage('escrowMessage', 'Nessun escrow selezionato!', 'error'); return; }
+            const sender = document.getElementById('pubKey').value;
+            if (!sender || !currentPrivateKey) { showMessage('escrowMessage', 'Wallet non caricato!', 'error'); return; }
+            const event = buildAndSignEvent('ESCROW_RELEASE', sender, '', 0, JSON.stringify({ escrow_id: currentEscrowId }));
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('escrowMessage', '✍️ Firma registrata!', 'success');
+                    lookupEscrow(); loadBalance(); loadTransactions();
+                } else { showMessage('escrowMessage', `Errore: ${data.message}`, 'error'); }
+            } catch (error) { showMessage('escrowMessage', 'Errore di connessione', 'error'); }
+        }
+
+        async function disputeEscrow() {
+            if (!currentEscrowId) { showMessage('escrowMessage', 'Nessun escrow selezionato!', 'error'); return; }
+            const reason = prompt('Descrivi il motivo della disputa:');
+            if (!reason) return;
+            const sender = document.getElementById('pubKey').value;
+            if (!sender || !currentPrivateKey) { showMessage('escrowMessage', 'Wallet non caricato!', 'error'); return; }
+            const event = buildAndSignEvent('ESCROW_DISPUTE', sender, '', 0, JSON.stringify({ escrow_id: currentEscrowId, description: reason }));
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('escrowMessage', '⚠️ Disputa aperta!', 'success');
+                    lookupEscrow(); loadTransactions();
+                } else { showMessage('escrowMessage', `Errore: ${data.message}`, 'error'); }
+            } catch (error) { showMessage('escrowMessage', 'Errore di connessione', 'error'); }
+        }
+
+        // --- ROOMS CON REPUTAZIONE (NUOVO) ---
+        async function loadRoomsWithReputation() {
+            const container = document.getElementById('roomsContainer');
+            container.innerHTML = '<div class="loading">Sincronizzazione con la rete P2P...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/rooms-with-reputation`);
+                const data = await response.json();
+                
+                if (data.success && data.data && data.data.length > 0) {
+                    loadedRooms = data.data.map(item => item.room);
+                    container.innerHTML = '';
+                    data.data.forEach(item => {
+                        const roomCard = createRoomCardWithReputation(item.room, item.reputation, item.id);
+                        container.appendChild(roomCard);
+                    });
+                    showMessage('roomsMessage', `${data.data.length} ROOMS sincronizzate dalla rete`, 'success');
+                } else {
+                    container.innerHTML = '<div class="loading">Nessuna ROOM disponibile al momento</div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="loading">Errore di sincronizzazione</div>';
+                showMessage('roomsMessage', 'Errore di connessione al server', 'error');
+            }
+        }
+
+        function createRoomCardWithReputation(room, rep, id) {
+            const div = document.createElement('div');
+            div.className = 'room-card';
+            
+            const name = (room.name || '').replace(/"/g, '');
+            const price = room.base_price;
+            const category = room.category || 'Generico';
+            const description = room.description || 'Nessuna descrizione disponibile';
+            const ownerId = room.owner_id ? room.owner_id.substring(0, 16) + '...' : 'Sconosciuto';
+            
+            const trustClass = (rep.trust_level || 'UNTRUSTED').toLowerCase();
+            const trustIcons = {
+                'verified': '⭐', 'trusted': '🟢', 'established': '🔵',
+                'new': '⚪', 'untrusted': '🔴'
+            };
+            const trustIcon = trustIcons[trustClass] || '⚪';
+            
+            div.innerHTML = `
+                <div class="room-header">
+                    <div>
+                        <div class="room-name">${name}</div>
+                        <span class="room-category">${category}</span>
+                    </div>
+                </div>
+                <div class="room-price">${price} <span>Philia / notte</span></div>
+                <div class="room-description">${description}</div>
+                <div class="room-owner">
+                    <span>Proprietario: ${ownerId}</span>
+                    <span class="trust-badge ${trustClass}">${trustIcon} ${rep.trust_level || 'UNTRUSTED'}</span>
+                </div>
+                <button onclick="openBookingModal('${id}')" class="success"> Prenota Ora</button>
+                <button onclick="openChat('${room.owner_id}', '${name}')" class="chat-btn">💬 Chat con Proprietario</button>
+            `;
+            return div;
+        }
+
+        // Fallback per rooms senza reputazione
+        async function loadRooms() {
+            const container = document.getElementById('roomsContainer');
+            container.innerHTML = '<div class="loading">Caricamento ROOMS...</div>';
+            try {
+                const response = await fetch(`${API_BASE}/rooms`);
+                const data = await response.json();
+                if (data.success && data.data.length > 0) {
+                    loadedRooms = data.data;
+                    container.innerHTML = '';
+                    loadedRooms.forEach(room => {
+                        container.appendChild(createRoomCard(room));
+                    });
+                } else {
+                    container.innerHTML = '<div class="loading">Nessuna ROOM disponibile</div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="loading">Errore nel caricamento</div>';
+            }
+        }
+
+        function createRoomCard(room) {
+            const div = document.createElement('div');
+            div.className = 'room-card';
+            const name = (room.name || '').replace(/"/g, '');
+            div.innerHTML = `
+                <div class="room-header">
+                    <div>
+                        <div class="room-name">${name}</div>
+                        <span class="room-category">${room.category || 'Generico'}</span>
+                    </div>
+                </div>
+                <div class="room-price">${room.base_price} <span>Philia / notte</span></div>
+                <div class="room-description">${room.description || ''}</div>
+                <div class="room-owner">Proprietario: ${room.owner_id ? room.owner_id.substring(0, 16) + '...' : '-'}</div>
+                <button onclick="openBookingModal('${room.id}')" class="success">🏨 Prenota Ora</button>
+                <button onclick="openChat('${room.owner_id}', '${name}')" class="chat-btn">💬 Chat con Proprietario</button>
+            `;
+            return div;
+        }
+
+        // --- CHAT ---
+        function openChat(ownerId, roomName) {
+    const sender = document.getElementById('pubKey').value;
+    if (!sender || !currentPrivateKey) { showMessage('roomsMessage', 'Genera prima un wallet!', 'error'); return; }
+    currentChatRoom = { ownerId, roomName };
+    document.getElementById('chatTitle').textContent = `💬 Chat - ${roomName}`;
+    document.getElementById('chatModal').classList.add('active');
+    loadChatMessages();
+    
+    // Avvia polling ogni 5 secondi per aggiornare i messaggi
+    window.chatPolling = setInterval(() => {
+        if (currentChatRoom) {
+            loadChatMessages();
+        }
+    }, 5000);
+}
+
+        function closeChat() {
+    document.getElementById('chatModal').classList.remove('active');
+    currentChatRoom = null;
+    
+    // Ferma il polling
+    if (window.chatPolling) {
+        clearInterval(window.chatPolling);
+        window.chatPolling = null;
+    }
+}
+
+        async function loadChatMessages() {
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.innerHTML = '<div class="loading">Caricamento messaggi...</div>';
+            const myId = document.getElementById('pubKey').value;
+            
+            try {
+                const [resR, resS, agrR, agrS] = await Promise.all([
+                    fetch(`${API_BASE}/messages?id=${myId}`),
+                    fetch(`${API_BASE}/messages?id=${currentChatRoom.ownerId}`),
+                    fetch(`${API_BASE}/agreements?id=${myId}`),
+                    fetch(`${API_BASE}/agreements?id=${currentChatRoom.ownerId}`)
+                ]);
+                const dR = await resR.json(), dS = await resS.json();
+                const aR = await agrR.json(), aS = await agrS.json();
+                
+                let all = [];
+                if (dR.success && dR.data) all = all.concat(dR.data);
+                if (dS.success && dS.data) all = all.concat(dS.data);
+                if (aR.success && aR.data) all = all.concat(aR.data);
+                if (aS.success && aS.data) all = all.concat(aS.data);
+                
+                all = all.filter(msg => 
+                    (msg.sender === myId && msg.recipient === currentChatRoom.ownerId) ||
+                    (msg.sender === currentChatRoom.ownerId && msg.recipient === myId)
+                );
+                all.sort((a, b) => a.timestamp - b.timestamp);
+                
+                if (all.length === 0) {
+                    messagesContainer.innerHTML = '<div class="loading">Nessun messaggio. Inizia la conversazione!</div>';
+                } else {
+                    messagesContainer.innerHTML = '';
+                    all.forEach(msg => messagesContainer.appendChild(createChatBubble(msg, myId)));
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }
+            } catch (error) {
+                messagesContainer.innerHTML = '<div class="loading">Errore nel caricamento</div>';
+            }
+        }
+
+        function createChatBubble(msg, myId) {
+            const div = document.createElement('div');
+            const isSent = msg.sender === myId;
+            div.className = `chat-bubble ${isSent ? 'sent' : 'received'}`;
+            if (msg.type === 'AGREEMENT') div.classList.add('agreement');
+            const content = (msg.content || msg.memo || '').replace(/^"(.*)"$/, '$1');
+            const time = new Date(msg.timestamp / 1000000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+            div.innerHTML = `<div class="bubble-content">${content}</div><div class="bubble-time">${time}</div>`;
+            return div;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            if (!currentPrivateKey) { alert('Wallet non caricato!'); return; }
+            const sender = document.getElementById('pubKey').value;
+            const event = buildAndSignEvent('MESSAGE', sender, currentChatRoom.ownerId, 0, text);
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) { input.value = ''; loadChatMessages(); loadTransactions(); }
+                else alert('Errore: ' + data.message);
+            } catch (error) { alert('Errore di connessione'); }
+        }
+
+        async function sendAgreement() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) { alert('Scrivi il testo dell\'accordo!'); return; }
+            if (!currentPrivateKey) { alert('Wallet non caricato!'); return; }
+            const sender = document.getElementById('pubKey').value;
+            const event = buildAndSignEvent('AGREEMENT', sender, currentChatRoom.ownerId, 0, text);
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) { input.value = ''; alert('✅ Accordo registrato nel DAG!'); loadChatMessages(); loadTransactions(); }
+                else alert('Errore: ' + data.message);
+            } catch (error) { alert('Errore di connessione'); }
+        }
+
+        // --- BOOKING ---
+        function openBookingModal(roomId) {
+            const sender = document.getElementById('pubKey').value;
+            if (!sender || !currentPrivateKey) { showMessage('roomsMessage', 'Genera prima un wallet!', 'error'); return; }
+            const room = loadedRooms.find(r => r.id === roomId);
+            if (!room) return;
+            currentBooking = room;
+            document.getElementById('bookingTitle').textContent = `🏨 Prenota ${room.name}`;
+            document.getElementById('bookingRoomName').textContent = room.name;
+            document.getElementById('bookingPrice').textContent = room.base_price;
+            document.getElementById('bookingCheckIn').value = new Date().toISOString().split('T')[0];
+            document.getElementById('bookingNights').value = 1;
+            updateBookingTotal();
+            document.getElementById('bookingModal').classList.add('active');
+        }
+
+        function closeBookingModal() {
+            document.getElementById('bookingModal').classList.remove('active');
+            currentBooking = null;
+        }
+
+        function updateBookingTotal() {
+            if (!currentBooking) return;
+            const nights = parseInt(document.getElementById('bookingNights').value) || 0;
+            document.getElementById('bookingTotal').textContent = `${currentBooking.base_price * nights} Philia`;
+        }
+
+        async function confirmBooking() {
+            const nights = parseInt(document.getElementById('bookingNights').value);
+            const checkIn = document.getElementById('bookingCheckIn').value;
+            if (!nights || nights < 1) { alert('Inserisci almeno 1 notte'); return; }
+            if (!checkIn) { alert('Seleziona una data di check-in'); return; }
+            const sender = document.getElementById('pubKey').value;
+            const total = currentBooking.base_price * nights;
+            const memo = JSON.stringify({
+                room_id: currentBooking.id, room_name: currentBooking.name,
+                nights, check_in: checkIn, total_amount: total
+            });
+            const event = buildAndSignEvent('PAYMENT', sender, currentBooking.owner_id, total, memo, 604800);
+            try {
+                const response = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('roomsMessage', `✅ Prenotazione confermata: ${nights} notti dal ${checkIn}`, 'success');
+                    closeBookingModal();
+                    loadBalance(); loadReputation(); loadTransactions();
+                } else { showMessage('roomsMessage', `Errore: ${data.message}`, 'error'); }
+            } catch (error) { showMessage('roomsMessage', 'Errore di connessione', 'error'); }
+        }
+
+        // Enter key per inviare messaggio
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('chatInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendMessage();
+            });
+        });
+    </script>
+</body>
+</html>
