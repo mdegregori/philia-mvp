@@ -548,6 +548,7 @@ function loadNonce(pubKey) {
                 loadNonce(pubKey);
                 showMessage('walletMessage', '✅ Wallet importato con successo!', 'success');
                 setTimeout(() => { loadBalance(); loadReputation(); loadTransactions(); }, 500);
+                syncDAG(); // Sincronizzazione automatica all'avvio
             } catch (e) {
                 showMessage('walletMessage', 'Chiave privata non valida (non è una chiave Ed25519 valida)', 'error');
                 return;
