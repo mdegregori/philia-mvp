@@ -94,6 +94,15 @@ type Event struct {
 	Signature string `json:"signature"`
 }
 
+// AnchorRecord per la notarizzazione del registro
+type AnchorRecord struct {
+	Date        string `json:"date"`
+	EventCount  int    `json:"event_count"`
+	LogHash     string `json:"log_hash"`
+	TxHash      string `json:"tx_hash"`
+	BlockNumber int64  `json:"block_number"`
+}
+
 // --- METODI DELL'EVENTO ---
 
 // NewEvent crea un nuovo evento vuoto

@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
-        "strconv"
 )
 
-func main() {
+func runAPIServer() {
 	// 1. Configurazione Iniziale
 	dataDir := "data"
 	if len(os.Args) > 1 {
@@ -47,7 +47,7 @@ func main() {
 	}
 
 	// 4. REGISTRAZIONE ENDPOINT API (PRIMA del file server!)
-	
+
 	// Endpoint 1: Saldo
 	http.HandleFunc("/api/v1/balance", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -85,12 +85,12 @@ func main() {
 			jsonResponse(w, map[string]interface{}{"success": false, "message": "JSON non valido"})
 			return
 		}
-		
+
 		if err := engine.ProcessEvent(req.Event); err != nil {
 			jsonResponse(w, map[string]interface{}{"success": false, "message": err.Error()})
 			return
 		}
-		
+
 		jsonResponse(w, map[string]interface{}{"success": true, "message": "Evento processato con successo"})
 	}))
 
@@ -167,14 +167,14 @@ func main() {
 			"success": true,
 			"message": fmt.Sprintf("Reputazione calcolata per %s", userID[:16]),
 			"data": map[string]interface{}{
-				"user_id":              rep.UserID,
-				"completed_sales":      rep.CompletedSales,
-				"completed_purchases":  rep.CompletedPurchases,
-				"expired_payments":     rep.ExpiredPayments,
-				"disputes_lost":        rep.DisputesLost,
-				"score":                rep.Score,
-				"trust_level":          rep.TrustLevel,
-				"max_transaction":      maxAmount,
+				"user_id":             rep.UserID,
+				"completed_sales":     rep.CompletedSales,
+				"completed_purchases": rep.CompletedPurchases,
+				"expired_payments":    rep.ExpiredPayments,
+				"disputes_lost":       rep.DisputesLost,
+				"score":               rep.Score,
+				"trust_level":         rep.TrustLevel,
+				"max_transaction":     maxAmount,
 			},
 		})
 	}))
@@ -202,74 +202,74 @@ func main() {
 		})
 	}))
 
-// Endpoint 8: Transazioni (storico utente)
-http.HandleFunc("/api/v1/transactions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	userID := r.URL.Query().Get("id")
-	if userID == "" {
-		jsonResponse(w, map[string]interface{}{"success": false, "message": "Parametro 'id' mancante"})
-		return
-	}
-	txs := engine.GetTransactions(userID)
-	jsonResponse(w, map[string]interface{}{
-		"success": true,
-		"message": fmt.Sprintf("%d transazioni trovate", len(txs)),
-		"data":    txs,
-	})
-}))
-
-// Endpoint 9: Rooms con reputazione
-http.HandleFunc("/api/v1/rooms-with-reputation", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	rooms := engine.GetRoomsWithReputation()
-	jsonResponse(w, map[string]interface{}{
-		"success": true,
-		"message": fmt.Sprintf("%d rooms trovate", len(rooms)),
-		"data":    rooms,
-	})
-}))
-
-// Endpoint 10: Sync Header
-http.HandleFunc("/api/v1/sync/header", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	header := engine.SyncHeader()
-	jsonResponse(w, map[string]interface{}{
-		"success": true,
-		"message": "Header sincronizzazione",
-		"data":    header,
-	})
-}))
-
-// Endpoint 11: Sync Events
-http.HandleFunc("/api/v1/sync/events", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	fromID := r.URL.Query().Get("from")
-	limitStr := r.URL.Query().Get("limit")
-	limit := 100
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			limit = l
+	// Endpoint 8: Transazioni (storico utente)
+	http.HandleFunc("/api/v1/transactions", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+			return
 		}
-	}
-	events := engine.SyncEvents(fromID, limit)
-	jsonResponse(w, map[string]interface{}{
-		"success": true,
-		"message": fmt.Sprintf("%d eventi sincronizzati", len(events)),
-		"data":    events,
-	})
-}))
+		userID := r.URL.Query().Get("id")
+		if userID == "" {
+			jsonResponse(w, map[string]interface{}{"success": false, "message": "Parametro 'id' mancante"})
+			return
+		}
+		txs := engine.GetTransactions(userID)
+		jsonResponse(w, map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("%d transazioni trovate", len(txs)),
+			"data":    txs,
+		})
+	}))
+
+	// Endpoint 9: Rooms con reputazione
+	http.HandleFunc("/api/v1/rooms-with-reputation", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+			return
+		}
+		rooms := engine.GetRoomsWithReputation()
+		jsonResponse(w, map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("%d rooms trovate", len(rooms)),
+			"data":    rooms,
+		})
+	}))
+
+	// Endpoint 10: Sync Header
+	http.HandleFunc("/api/v1/sync/header", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+			return
+		}
+		header := engine.SyncHeader()
+		jsonResponse(w, map[string]interface{}{
+			"success": true,
+			"message": "Header sincronizzazione",
+			"data":    header,
+		})
+	}))
+
+	// Endpoint 11: Sync Events
+	http.HandleFunc("/api/v1/sync/events", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+			return
+		}
+		fromID := r.URL.Query().Get("from")
+		limitStr := r.URL.Query().Get("limit")
+		limit := 100
+		if limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil {
+				limit = l
+			}
+		}
+		events := engine.SyncEvents(fromID, limit)
+		jsonResponse(w, map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("%d eventi sincronizzati", len(events)),
+			"data":    events,
+		})
+	}))
 
 	// 5. File Server per la Web App (gestisce solo le richieste non-API)
 	fileServer := http.FileServer(http.Dir("."))
@@ -287,6 +287,6 @@ http.HandleFunc("/api/v1/sync/events", corsMiddleware(func(w http.ResponseWriter
 	fmt.Printf("✅ Server in ascolto su http://localhost:%d\n", port)
 	fmt.Printf(" Web App disponibile su http://localhost:%d/index.html\n", port)
 	fmt.Printf(" API pronte per la Web App\n")
-	
+
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

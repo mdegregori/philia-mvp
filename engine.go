@@ -1,12 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
-        "crypto/sha256"
 )
 
 // --- STRUTTURA ENGINE ---
@@ -189,7 +189,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		// Incrementa reputazione del destinatario (venditore)
 		e.reputation[ev.Recipient] += 10
 		ev.Status = "SETTLED"
-		fmt.Printf("SETTLE: Trasferiti %d da %s a %s | Reputazione %s: +10\n", 
+		fmt.Printf("SETTLE: Trasferiti %d da %s a %s | Reputazione %s: +10\n",
 			ev.Amount, ev.Sender[:8], ev.Recipient[:8], ev.Recipient[:8])
 
 	case ROOM_CREATE:
@@ -258,7 +258,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		escrow.Signatures = make(map[string]string)
 		e.escrows[escrow.ID] = &escrow
 		ev.Status = "PENDING"
-		fmt.Printf("🔒 ESCROW creato: %s | Importo: %d | Richieste: %d firme\n", 
+		fmt.Printf("🔒 ESCROW creato: %s | Importo: %d | Richieste: %d firme\n",
 			escrow.ID[:8], escrow.Amount, escrow.RequiredSigs)
 
 	case ESCROW_RELEASE:
@@ -277,9 +277,9 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		}
 		// Registra la firma
 		escrow.Signatures[ev.Sender] = ev.Signature
-		fmt.Printf("✍️ Firma ESCROW %s da %s (%d/%d)\n", 
+		fmt.Printf("✍️ Firma ESCROW %s da %s (%d/%d)\n",
 			escrow.ID[:8], ev.Sender[:8], len(escrow.Signatures), escrow.RequiredSigs)
-		
+
 		// Se raggiunte le firme richieste, rilascia i fondi
 		if len(escrow.Signatures) >= escrow.RequiredSigs {
 			e.reserved[escrow.Buyer] -= escrow.Amount
@@ -288,7 +288,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 			escrow.Status = "RELEASED"
 			e.reputation[escrow.Seller] += 10
 			ev.Status = "SETTLED"
-			fmt.Printf("✅ ESCROW %s RILASCIATO: %d Philia a %s\n", 
+			fmt.Printf("✅ ESCROW %s RILASCIATO: %d Philia a %s\n",
 				escrow.ID[:8], escrow.Amount, escrow.Seller[:8])
 		}
 
@@ -340,12 +340,12 @@ func (e *Engine) resolveConflict(a, b Event) Event {
 func (e *Engine) checkDoubleSpend(ev Event) {
 	// Cerca altri PAYMENT pendenti dallo stesso sender che potrebbero competere
 	available := e.balances[ev.Sender] - e.reserved[ev.Sender]
-	
+
 	// Se c'è abbastanza saldo disponibile, nessun conflitto
 	if available >= ev.Amount {
 		return
 	}
-	
+
 	// Altrimenti, cerca nel log eventi PAYMENT concorrenti
 	for _, oldEv := range e.eventLog {
 		if oldEv.Type != PAYMENT {
@@ -365,12 +365,12 @@ func (e *Engine) checkDoubleSpend(ev Event) {
 				// Il nuovo evento vince, invalida il vecchio
 				oldEv.Status = "INVALID"
 				e.reserved[oldEv.Sender] -= oldEv.Amount
-				fmt.Printf("⚔️ CLO: vince nuovo evento %s (nonce %d), invalidato %s\n", 
+				fmt.Printf("⚔️ CLO: vince nuovo evento %s (nonce %d), invalidato %s\n",
 					ev.ID[:8], ev.Nonce, oldEv.ID[:8])
 			} else {
 				// Il vecchio evento vince, rigetta il nuovo
 				ev.Status = "INVALID"
-				fmt.Printf("⚔️ CLO: vince evento esistente %s (nonce %d), rigettato %s\n", 
+				fmt.Printf("⚔️ CLO: vince evento esistente %s (nonce %d), rigettato %s\n",
 					oldEv.ID[:8], oldEv.Nonce, ev.ID[:8])
 				return // Non applicare il nuovo evento
 			}
@@ -413,7 +413,7 @@ func (e *Engine) checkExpiredPayments() {
 			ev.Status = "EXPIRED"
 			// Penalizza reputazione del mittente (pagamento non completato)
 			e.reputation[ev.Sender] -= 5
-			fmt.Printf("⏰ PAYMENT %s SCADUTO: sbloccati %d Philia a %s\n", 
+			fmt.Printf("⏰ PAYMENT %s SCADUTO: sbloccati %d Philia a %s\n",
 				ev.ID[:8], ev.Amount, ev.Sender[:8])
 		}
 	}
@@ -559,7 +559,7 @@ func (e *Engine) GetAgreements(userID string) []Event {
 func (e *Engine) GetTransactions(userID string) []Event {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	var txs []Event
 	for _, ev := range e.eventLog {
 		if ev.Sender == userID || ev.Recipient == userID {
@@ -577,14 +577,14 @@ func (e *Engine) GetTransactions(userID string) []Event {
 func (e *Engine) GetRoomsWithReputation() []map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	var result []map[string]interface{}
 	for id, room := range e.rooms {
 		rep := e.calculateReputationInternal(room.OwnerID)
 		result = append(result, map[string]interface{}{
-			"id":           id,
-			"room":         room,
-			"reputation":   rep,
+			"id":         id,
+			"room":       room,
+			"reputation": rep,
 		})
 	}
 	return result
@@ -637,19 +637,19 @@ func (e *Engine) calculateReputationInternal(userID string) ReputationScore {
 func (e *Engine) SyncHeader() map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	lastHash := ""
 	if len(e.eventLog) > 0 {
 		lastHash = e.eventLog[len(e.eventLog)-1].ID
 	}
-	
+
 	// Calcola un merkle root semplificato (hash di tutti gli ID)
 	hasher := sha256.New()
 	for _, ev := range e.eventLog {
 		hasher.Write([]byte(ev.ID))
 	}
 	merkleRoot := fmt.Sprintf("%x", hasher.Sum(nil))
-	
+
 	return map[string]interface{}{
 		"total_events": len(e.eventLog),
 		"last_hash":    lastHash,
@@ -661,11 +661,11 @@ func (e *Engine) SyncHeader() map[string]interface{} {
 func (e *Engine) SyncEvents(fromID string, limit int) []Event {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	
+
 	startIndex := 0
 	if fromID != "" {
 		for i, ev := range e.eventLog {
@@ -675,19 +675,15 @@ func (e *Engine) SyncEvents(fromID string, limit int) []Event {
 			}
 		}
 	}
-	
+
 	endIndex := startIndex + limit
 	if endIndex > len(e.eventLog) {
 		endIndex = len(e.eventLog)
 	}
-	
+
 	if startIndex >= len(e.eventLog) {
 		return []Event{}
 	}
-	
+
 	return e.eventLog[startIndex:endIndex]
 }
-
-
-
-	

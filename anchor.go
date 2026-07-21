@@ -24,7 +24,7 @@ func ComputeLogHash(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("impossibile leggere il file di log: %w", err)
 	}
-	
+
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:]), nil
 }
@@ -34,11 +34,11 @@ func ComputeLogHash(filePath string) (string, error) {
 func SimulateBlockchainAnchor(logHash string) (string, error) {
 	fmt.Println("📡 Connessione alla rete esterna (simulata)...")
 	time.Sleep(1 * time.Second) // Simula la latenza di rete
-	
+
 	// Generiamo un "TxHash" fittizio ma realistico basato sull'hash del log + timestamp
 	mockData := logHash + fmt.Sprintf("%d", time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(mockData))
-	
+
 	return "0x" + hex.EncodeToString(hash[:])[:40], nil // Simula un hash di transazione
 }
 
@@ -70,7 +70,7 @@ func SaveAnchorRecord(record AnchorRecord, anchorFilePath string) error {
 // ExecuteDailyAnchor è la funzione principale che orchestra tutto il processo
 func ExecuteDailyAnchor(logFilePath string, anchorFilePath string, date string) error {
 	fmt.Printf("🔒 Avvio procedura di ancoraggio giornaliero per la data: %s\n", date)
-	
+
 	// 1. Calcola l'hash del registro
 	logHash, err := ComputeLogHash(logFilePath)
 	if err != nil {
@@ -98,6 +98,6 @@ func ExecuteDailyAnchor(logFilePath string, anchorFilePath string, date string) 
 		return fmt.Errorf("fallimento salvataggio ricevuta: %w", err)
 	}
 	fmt.Printf("✅ Ricevuta notarile salvata in: %s\n", anchorFilePath)
-	
+
 	return nil
 }
