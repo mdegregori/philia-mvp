@@ -180,12 +180,16 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		fmt.Printf("PAYMENT: Prenotati %d da %s (TTL: %ds)\n", ev.Amount, ev.Sender[:8], ev.TTLSeconds)
 
 	case SETTLE:
+		
+		
 		if e.reserved[ev.Sender] < ev.Amount {
 			return errors.New("partita prenotata insufficiente")
 		}
 		e.reserved[ev.Sender] -= ev.Amount
 		e.balances[ev.Sender] -= ev.Amount
 		e.balances[ev.Recipient] += ev.Amount
+		
+		
 		// Incrementa reputazione del destinatario (venditore)
 		e.reputation[ev.Recipient] += 10
 		ev.Status = "SETTLED"
@@ -280,6 +284,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		fmt.Printf("✍️ Firma ESCROW %s da %s (%d/%d)\n",
 			escrow.ID[:8], ev.Sender[:8], len(escrow.Signatures), escrow.RequiredSigs)
 
+
 		// Se raggiunte le firme richieste, rilascia i fondi
 		if len(escrow.Signatures) >= escrow.RequiredSigs {
 			e.reserved[escrow.Buyer] -= escrow.Amount
@@ -307,7 +312,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		escrow.Status = "DISPUTED"
 		escrow.Description += " [DISPUTA: " + dispute.Description + "]"
 		ev.Status = "PENDING"
-		fmt.Printf("️ DISPUTA aperta su ESCROW %s: %s\n", escrow.ID[:8], dispute.Description)
+		fmt.Printf("⚠️ DISPUTA aperta su ESCROW %s: %s\n", escrow.ID[:8], dispute.Description)
 
 	default:
 		return fmt.Errorf("tipo evento sconosciuto: %s", ev.Type)
@@ -529,6 +534,7 @@ func (e *Engine) GetEventLog() []Event {
 }
 
 func (e *Engine) GetBalance(id string) (int64, int64) {
+	
 	return e.balances[id], e.reserved[id]
 }
 

@@ -1,21 +1,16 @@
 package main
 
 import (
+	"crypto/sha256" // AGGIUNTO: risolve l'errore "undefined: sha256"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
+	// RIMOSSO: "path/filepath" non era utilizzato
 )
 
-// AnchorRecord rappresenta un record di notarizzazione su blockchain
-type AnchorRecord struct {
-	Date        string `json:"date"`
-	EventCount  int    `json:"event_count"`
-	LogHash     string `json:"log_hash"`
-	TxHash      string `json:"tx_hash"`
-	BlockNumber int64  `json:"block_number"`
-}
+// NOTA: La struct AnchorRecord è stata rimossa da qui. 
+// Il compilatore ora userà automaticamente quella definita in types.go.
 
 // ExecuteDailyAnchor crea un anchor giornaliero del registro
 func ExecuteDailyAnchor(logPath, anchorPath, date string) error {
@@ -27,12 +22,6 @@ func ExecuteDailyAnchor(logPath, anchorPath, date string) error {
 	// Calcola hash del log corrente
 	currentHash := fmt.Sprintf("%x", sha256.Sum256(data))
 
-	// Carica record esistenti
-	var records []AnchorRecord
-	if existing, err := os.ReadFile(anchorPath); err == nil {
-		json.Unmarshal(existing, &records)
-	}
-
 	// Crea nuovo record
 	record := AnchorRecord{
 		Date:        date,
@@ -42,11 +31,8 @@ func ExecuteDailyAnchor(logPath, anchorPath, date string) error {
 		BlockNumber: time.Now().Unix(),
 	}
 
-	records = append(records, record)
-
-	// Salva
-	data, _ = json.MarshalIndent(records, "", "  ")
-	if err := os.WriteFile(anchorPath, data, 0644); err != nil {
+	// Delega il salvataggio atomico a SaveAnchorRecord (definita in anchor.go)
+	if err := SaveAnchorRecord(record, anchorPath); err != nil {
 		return fmt.Errorf("errore salvataggio anchor: %w", err)
 	}
 
@@ -55,7 +41,6 @@ func ExecuteDailyAnchor(logPath, anchorPath, date string) error {
 }
 
 func countEvents(data []byte) int {
-	// Conta le linee nel log (semplificato)
 	count := 0
 	for _, b := range data {
 		if b == '\n' {
@@ -66,7 +51,6 @@ func countEvents(data []byte) int {
 }
 
 func simulateBlockchainTx(hash string) string {
-	// Simula una transazione blockchain (in produzione sarebbe reale)
 	return fmt.Sprintf("0x%s", hash[:40])
 }
 
@@ -80,7 +64,7 @@ func CreateAnchorEvent(parentHash, sender string, anchorData string, nonce uint6
 		0,
 		time.Now().UnixNano(),
 		nonce,
-		0, // No TTL per anchor
+		0,
 		anchorData,
 	)
 }

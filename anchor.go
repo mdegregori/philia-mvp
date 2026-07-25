@@ -9,14 +9,8 @@ import (
 	"time"
 )
 
-// AnchorRecord rappresenta la prova crittografica salvata localmente
-type AnchorRecord struct {
-	Date        string `json:"date"`         // Data di riferimento (es. "2026-06-15")
-	LogHash     string `json:"log_hash"`     // Hash SHA-256 del file events.log
-	TxHash      string `json:"tx_hash"`      // Hash della transazione sulla blockchain esterna (simulato)
-	Timestamp   int64  `json:"timestamp"`    // Timestamp UNIX dell'ancoraggio
-	Blockchain  string `json:"blockchain"`   // Nome della blockchain o servizio notarile
-}
+// NOTA: La struct AnchorRecord è stata rimossa.
+// Si usa quella definita in types.go che è la fonte di verità.
 
 // ComputeLogHash legge l'intero file e restituisce il suo hash SHA-256
 func ComputeLogHash(filePath string) (string, error) {
@@ -43,6 +37,7 @@ func SimulateBlockchainAnchor(logHash string) (string, error) {
 }
 
 // SaveAnchorRecord salva la prova di ancoraggio in un file locale (es. data/anchors.json)
+// Usa scrittura atomica (scrive su .tmp poi rinomina) per evitare corruzioni
 func SaveAnchorRecord(record AnchorRecord, anchorFilePath string) error {
 	// Leggiamo i record esistenti, se il file esiste
 	var records []AnchorRecord
@@ -67,37 +62,7 @@ func SaveAnchorRecord(record AnchorRecord, anchorFilePath string) error {
 	return os.Rename(tmpFile, anchorFilePath)
 }
 
-// ExecuteDailyAnchor è la funzione principale che orchestra tutto il processo
-func ExecuteDailyAnchor(logFilePath string, anchorFilePath string, date string) error {
-	fmt.Printf("🔒 Avvio procedura di ancoraggio giornaliero per la data: %s\n", date)
-
-	// 1. Calcola l'hash del registro
-	logHash, err := ComputeLogHash(logFilePath)
-	if err != nil {
-		return fmt.Errorf("fallimento calcolo hash: %w", err)
-	}
-	fmt.Printf("✅ Hash del registro calcolato: %s...\n", logHash[:16])
-
-	// 2. Simula l'ancoraggio esterno
-	txHash, err := SimulateBlockchainAnchor(logHash)
-	if err != nil {
-		return fmt.Errorf("fallimento ancoraggio esterno: %w", err)
-	}
-	fmt.Printf("✅ Ancorato sulla blockchain con TxHash: %s...\n", txHash[:16])
-
-	// 3. Salva la ricevuta locale
-	record := AnchorRecord{
-		Date:       date,
-		LogHash:    logHash,
-		TxHash:     txHash,
-		Timestamp:  time.Now().Unix(),
-		Blockchain: "Stellar Testnet (Simulato)",
-	}
-
-	if err := SaveAnchorRecord(record, anchorFilePath); err != nil {
-		return fmt.Errorf("fallimento salvataggio ricevuta: %w", err)
-	}
-	fmt.Printf("✅ Ricevuta notarile salvata in: %s\n", anchorFilePath)
-
-	return nil
-}
+// NOTA: ExecuteDailyAnchor è stata rimossa da qui.
+// La funzione rimane solo in pos.go per evitare duplicazioni.
+// Le funzioni helper sopra (ComputeLogHash, SimulateBlockchainAnchor, SaveAnchorRecord)
+// possono essere chiamate da pos.go o da qualsiasi altro file del package main.
