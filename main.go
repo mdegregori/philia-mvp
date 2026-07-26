@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+        "flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,20 +54,15 @@ func initNonces(engine *Engine) {
 }
 
 func main() {
-	dataDir = "data"
-	if len(os.Args) > 1 {
-		dataDir = os.Args[1]
-	}
+	// 1. Configura i flag per directory e porta
+	flag.StringVar(&dataDir, "data-dir", "data", "Directory per i dati del nodo")
+	p2pPort := flag.Int("port", 4001, "Porta per la connessione P2P")
+	flag.Parse()
 
+	fmt.Printf("📂 Directory dati: %s | Porta P2P: %d\n", dataDir, *p2pPort)
+
+	// 2. Carica le chiavi dalla directory specificata
 	sessionKeys = loadKeysFromDisk(dataDir)
-
-	p2pPort := 4001
-	if len(os.Args) > 2 {
-		port, err := strconv.Atoi(os.Args[2])
-		if err == nil {
-			p2pPort = port
-		}
-	}
 
 	fmt.Println("==========================================")
 	fmt.Println("       PHILIA ECONOMIC PROTOCOL (PEP)     ")
@@ -104,7 +100,7 @@ func main() {
 	// Inizializza i contatori nonce dall'eventLog esistente
 	initNonces(engine)
 
-	p2pNode, err := NewP2PNode(context.Background(), p2pPort, engine)
+		p2pNode, err := NewP2PNode(context.Background(), *p2pPort, engine)
 	if err != nil {
 		fmt.Printf("Errore avvio P2P: %v\n", err)
 		return
