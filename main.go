@@ -8,7 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-        "flag"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +23,44 @@ import (
 var sessionKeys = make(map[string]ed25519.PrivateKey)
 var currentUserIdentity string
 var dataDir string
-var nonces = make(map[string]uint64) // Contatore nonce per identità
+var nonces = make(map[string]uint64)
+var x25519Keys = make(map[string]struct{ priv, pub []byte })
+
+func getOrCreateX25519Key(name string) ([]byte, []byte) {
+	if k, exists := x25519Keys[name]; exists {
+		return k.priv, k.pub
+	}
+	
+	path := filepath.Join(dataDir, "keystore.json")
+	keys := make(map[string]string)
+	
+	if data, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(data, &keys)
+	}
+	
+	if privHex, ok := keys[name+"_x25519_priv"]; ok {
+		if pubHex, ok2 := keys[name+"_x25519_pub"]; ok2 {
+			priv, _ := hex.DecodeString(privHex)
+			pub, _ := hex.DecodeString(pubHex)
+			x25519Keys[name] = struct{ priv, pub []byte }{priv, pub}
+			return priv, pub
+		}
+	}
+	
+	priv, pub, err := GenerateKeyPair()
+	if err != nil {
+		fmt.Printf("Errore generazione chiave X25519: %v\n", err)
+		return nil, nil
+	}
+	x25519Keys[name] = struct{ priv, pub []byte }{priv, pub}
+	
+	keys[name+"_x25519_priv"] = hex.EncodeToString(priv)
+	keys[name+"_x25519_pub"] = hex.EncodeToString(pub)
+	newData, _ := json.MarshalIndent(keys, "", "  ")
+	os.WriteFile(path, newData, 0644)
+	
+	return priv, pub
+}
 
 func getOrCreateKey(name string) (ed25519.PrivateKey, string) {
 	if priv, exists := sessionKeys[name]; exists {
@@ -36,14 +73,12 @@ func getOrCreateKey(name string) (ed25519.PrivateKey, string) {
 	return priv, hex.EncodeToString(pub)
 }
 
-// getNextNonce restituisce il prossimo nonce disponibile per un'identità
 func getNextNonce(userID string) uint64 {
 	nonce := nonces[userID] + 1
 	nonces[userID] = nonce
 	return nonce
 }
 
-// initNonces scansiona l'eventLog per inizializzare i contatori nonce
 func initNonces(engine *Engine) {
 	for _, ev := range engine.GetEventLog() {
 		if ev.Nonce > nonces[ev.Sender] {
@@ -54,53 +89,31 @@ func initNonces(engine *Engine) {
 }
 
 func main() {
-	// 1. Configura i flag per directory e porta
 	flag.StringVar(&dataDir, "data-dir", "data", "Directory per i dati del nodo")
 	p2pPort := flag.Int("port", 4001, "Porta per la connessione P2P")
 	flag.Parse()
 
 	fmt.Printf("📂 Directory dati: %s | Porta P2P: %d\n", dataDir, *p2pPort)
 
-	// 2. Carica le chiavi dalla directory specificata
 	sessionKeys = loadKeysFromDisk(dataDir)
 
 	fmt.Println("==========================================")
 	fmt.Println("       PHILIA ECONOMIC PROTOCOL (PEP)     ")
-	fmt.Println("          Universal Wallet CLI v1.1       ")
+	fmt.Println("          Universal Wallet CLI v1.2 (E2E) ")
 	fmt.Println("==========================================")
-	fmt.Println("Comandi:")
-	fmt.Println("  create <nome>                 : Crea/Carica la tua identita")
-	fmt.Println("  import <chiave_privata_hex>   : Importa un wallet esistente")
-	fmt.Println("  fund <importo>                : Ricevi fondi iniziali (GENESIS)")
-	fmt.Println("  balance                       : Mostra i tuoi saldi")
-	fmt.Println("  reputation                    : Mostra la tua reputazione")
-	fmt.Println("  send <ID_dest> <importo> <memo>: Prenota un pagamento (PAYMENT, TTL 7 giorni)")
-	fmt.Println("  settle <ID_dest> <importo>    : Regola definitivamente (SETTLE)")
-	fmt.Println("  send-message <ID_dest> <testo>: Invia un messaggio crittografato")
-	fmt.Println("  send-agreement <ID_dest> <testo>: Invia un accordo contrattuale")
-	fmt.Println("  send-escrow <seller_id> <importo> <descrizione>: Crea contratto escrow")
-	fmt.Println("  release-escrow <escrow_id>    : Firma rilascio escrow")
-	fmt.Println("  dispute-escrow <escrow_id> <motivo>: Apri disputa escrow")
-	fmt.Println("  check-expired                 : Controlla pagamenti scaduti")
-	fmt.Println("  list-messages                 : Mostra i tuoi messaggi ricevuti")
-	fmt.Println("  create-room <nome> <cat> <prezzo> : Crea una ROOM")
-	fmt.Println("  list-rooms                    : Elenca le ROOMS locali")
-	fmt.Println("  connect <multiaddr>           : Connettiti a un peer P2P")
-	fmt.Println("  sync <peer_id>                : Sincronizza DAG con peer")
-	fmt.Println("  anchor                        : Notarizza il registro su blockchain")
-	fmt.Println("  verify                        : Verifica l'integrita del registro")
-	fmt.Println("  show-key                      : Mostra la tua chiave privata")
-	fmt.Println("  exit                          : Salva e chiudi")
+	fmt.Println("Comandi: create, import, fund, balance, reputation, send, settle,")
+	fmt.Println("         send-message, send-agreement, send-escrow, release-escrow,")
+	fmt.Println("         dispute-escrow, check-expired, list-messages, chat,")
+	fmt.Println("         create-room, list-rooms, connect, sync, anchor, verify, show-key, exit")
 	fmt.Println("==========================================")
 
 	store := NewStore(dataDir)
 	engine := NewEngine(store)
 	defer engine.Close()
 
-	// Inizializza i contatori nonce dall'eventLog esistente
 	initNonces(engine)
 
-		p2pNode, err := NewP2PNode(context.Background(), *p2pPort, engine)
+	p2pNode, err := NewP2PNode(context.Background(), *p2pPort, engine)
 	if err != nil {
 		fmt.Printf("Errore avvio P2P: %v\n", err)
 		return
@@ -134,10 +147,19 @@ func main() {
 				continue
 			}
 			name := parts[1]
-			_, id := getOrCreateKey(name)
+			priv, id := getOrCreateKey(name)
+			_, xPub := getOrCreateX25519Key(name)
 			currentUserIdentity = name
+
+			parent := engine.GetLastHash()
+			nonce := getNextNonce(id)
+			announceEv := NewEvent("KEY_ANNOUNCE", parent, id, "", 0, time.Now().UnixNano(), nonce, 0, hex.EncodeToString(xPub))
+			announceEv.Sign(priv)
+			engine.ProcessEvent(announceEv)
+
 			fmt.Printf("Identita caricata: %s\n", name)
 			fmt.Printf("   Il tuo ID Pubblico: %s...\n", id[:16])
+			fmt.Println("   ✅ Chiave di crittografia E2E annunciata nel DAG")
 
 		case "import":
 			if len(parts) != 2 {
@@ -154,12 +176,11 @@ func main() {
 			pubKey := hex.EncodeToString(privKey.Public().(ed25519.PublicKey))
 			sessionKeys["imported"] = privKey
 			currentUserIdentity = "imported"
-			fmt.Printf("Wallet importato con successo!\n")
-			fmt.Printf("   ID Pubblico: %s...\n", pubKey[:16])
+			fmt.Printf("Wallet importato con successo!\n   ID Pubblico: %s...\n", pubKey[:16])
 
 		case "fund":
 			if currentUserIdentity == "" {
-				fmt.Println("Devi prima creare un'identita con 'create <nome>' o 'import <chiave>'.")
+				fmt.Println("Devi prima creare un'identita.")
 				continue
 			}
 			if len(parts) != 2 {
@@ -229,7 +250,7 @@ func main() {
 			priv, myID := getOrCreateKey(currentUserIdentity)
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
-			ttlSeconds := int64(604800) // 7 giorni di TTL
+			ttlSeconds := int64(604800)
 
 			ev := NewEvent(PAYMENT, parent, myID, destID, amount, time.Now().UnixNano(), nonce, ttlSeconds, memo)
 			ev.Sign(priv)
@@ -238,7 +259,6 @@ func main() {
 			} else {
 				fmt.Printf("Pagamento PRENOTATO: %d Philia inviati a %s...\n", amount, destID[:8])
 				fmt.Printf("   TTL: 7 giorni | Nonce: %d\n", nonce)
-				fmt.Println("   (Usa 'settle' per confermare il trasferimento definitivo)")
 			}
 
 		case "settle":
@@ -257,13 +277,12 @@ func main() {
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
 
-			ev := NewEvent(SETTLE, parent, myID, destID, amount, time.Now().UnixNano(), nonce, 0, "Settlement for "+destID[:8])
+			ev := NewEvent(SETTLE, parent, myID, destID, amount, time.Now().UnixNano(), nonce, 0, "Settlement")
 			ev.Sign(priv)
 			if err := engine.ProcessEvent(ev); err != nil {
 				fmt.Printf("Errore regolamento: %v\n", err)
 			} else {
-				fmt.Printf("Pagamento REGOLATO: %d Philia trasferiti definitivamente a %s...\n", amount, destID[:8])
-				fmt.Printf("   Nonce: %d\n", nonce)
+				fmt.Printf("Pagamento REGOLATO: %d Philia trasferiti a %s...\n", amount, destID[:8])
 			}
 
 		case "send-message":
@@ -272,7 +291,7 @@ func main() {
 				continue
 			}
 			if len(parts) < 3 {
-				fmt.Println("Uso: send-message <ID_destinatario> <testo del messaggio>")
+				fmt.Println("Uso: send-message <ID_destinatario> <testo>")
 				continue
 			}
 			destID := parts[1]
@@ -280,18 +299,37 @@ func main() {
 			messageText = strings.Trim(messageText, "\"")
 
 			priv, myID := getOrCreateKey(currentUserIdentity)
+			myXPriv, _ := getOrCreateX25519Key(currentUserIdentity)
+			
+			destXPub := engine.GetX25519PubKey(destID)
+			if len(destXPub) == 0 {
+				fmt.Println("⚠️ Chiave X25519 del destinatario non trovata.")
+				fmt.Println("   Assicurati che il destinatario abbia eseguito 'create' e che tu abbia fatto 'sync'.")
+				continue
+			}
+
+			sharedSecret, err := ComputeSharedSecret(myXPriv, destXPub)
+			if err != nil {
+				fmt.Printf("Errore calcolo segreto: %v\n", err)
+				continue
+			}
+
+			ciphertext, err := EncryptMessage(sharedSecret, []byte(messageText))
+			if err != nil {
+				fmt.Printf("Errore crittografia: %v\n", err)
+				continue
+			}
+
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
 
-			ev := NewEvent(MESSAGE, parent, myID, destID, 0, time.Now().UnixNano(), nonce, 0, messageText)
+			ev := NewEvent(MESSAGE, parent, myID, destID, 0, time.Now().UnixNano(), nonce, 0, hex.EncodeToString(ciphertext))
 			ev.Sign(priv)
 
 			if err := engine.ProcessEvent(ev); err != nil {
 				fmt.Printf("Errore invio messaggio: %v\n", err)
 			} else {
-				fmt.Printf("💬 Messaggio inviato a %s...\n", destID[:8])
-				fmt.Printf("   Nonce: %d\n", nonce)
-				fmt.Println("   (Il destinatario dovrà fare 'sync' per leggerlo)")
+				fmt.Printf("🔒 Messaggio E2E inviato a %s...\n", destID[:8])
 			}
 
 		case "send-agreement":
@@ -300,13 +338,12 @@ func main() {
 				continue
 			}
 			if len(parts) < 3 {
-				fmt.Println("Uso: send-agreement <ID_destinatario> <testo dell'accordo>")
+				fmt.Println("Uso: send-agreement <ID_destinatario> <testo>")
 				continue
 			}
 			destID := parts[1]
 			agreementText := strings.Join(parts[2:], " ")
-			agreementText = strings.Trim(agreementText, "\"")
-
+			
 			priv, myID := getOrCreateKey(currentUserIdentity)
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
@@ -315,11 +352,9 @@ func main() {
 			ev.Sign(priv)
 
 			if err := engine.ProcessEvent(ev); err != nil {
-				fmt.Printf("Errore invio accordo: %v\n", err)
+				fmt.Printf("Errore: %v\n", err)
 			} else {
 				fmt.Printf("📜 Accordo registrato e inviato a %s...\n", destID[:8])
-				fmt.Printf("   Nonce: %d\n", nonce)
-				fmt.Println("   (L'accordo è ora immutabile nel DAG)")
 			}
 
 		case "send-escrow":
@@ -329,7 +364,6 @@ func main() {
 			}
 			if len(parts) < 4 {
 				fmt.Println("Uso: send-escrow <seller_id> <importo> <descrizione>")
-				fmt.Println("Esempio: send-escrow abc123... 500 iPhone 15 Pro")
 				continue
 			}
 			sellerID := parts[1]
@@ -340,19 +374,14 @@ func main() {
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
 
-			// Crea struct Escrow
 			escrowID := fmt.Sprintf("esc_%s_%d", myID[:8], time.Now().Unix())
 			escrow := Escrow{
-				ID:           escrowID,
-				Buyer:        myID,
-				Seller:       sellerID,
-				Arbitrator:   "0000000000000000000000000000000000000000000000000000000000000000", // Default arbitrator
-				Amount:       amount,
-				Description:  description,
-				RequiredSigs: 2,
-				Signatures:   make(map[string]string),
-				CreatedAt:    time.Now().UnixNano(),
-				ExpiresAt:    time.Now().Add(7 * 24 * time.Hour).UnixNano(), // 7 giorni
+				ID: escrowID, Buyer: myID, Seller: sellerID,
+				Arbitrator: "0000000000000000000000000000000000000000000000000000000000000000",
+				Amount: amount, Description: description, RequiredSigs: 2,
+				Signatures: make(map[string]string),
+				CreatedAt: time.Now().UnixNano(),
+				ExpiresAt: time.Now().Add(7 * 24 * time.Hour).UnixNano(),
 			}
 			escrowJSON, _ := json.Marshal(escrow)
 
@@ -363,11 +392,6 @@ func main() {
 				fmt.Printf("Errore creazione escrow: %v\n", err)
 			} else {
 				fmt.Printf("🔒 ESCROW creato: %s\n", escrowID)
-				fmt.Printf("   Importo: %d Philia bloccati\n", amount)
-				fmt.Printf("   Venditore: %s...\n", sellerID[:16])
-				fmt.Printf("   Richieste: 2 firme (buyer + seller)\n")
-				fmt.Printf("   Scadenza: 7 giorni\n")
-				fmt.Printf("   Nonce: %d\n", nonce)
 			}
 
 		case "release-escrow":
@@ -380,25 +404,20 @@ func main() {
 				continue
 			}
 			escrowID := parts[1]
-
 			priv, myID := getOrCreateKey(currentUserIdentity)
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
 
-			releaseData := map[string]string{
-				"escrow_id": escrowID,
-			}
+			releaseData := map[string]string{"escrow_id": escrowID}
 			releaseJSON, _ := json.Marshal(releaseData)
 
 			ev := NewEvent(ESCROW_RELEASE, parent, myID, "", 0, time.Now().UnixNano(), nonce, 0, string(releaseJSON))
 			ev.Sign(priv)
 
 			if err := engine.ProcessEvent(ev); err != nil {
-				fmt.Printf("Errore rilascio escrow: %v\n", err)
+				fmt.Printf("Errore: %v\n", err)
 			} else {
 				fmt.Printf("✍️ Firma ESCROW %s registrata\n", escrowID[:16])
-				fmt.Printf("   Nonce: %d\n", nonce)
-				fmt.Println("   (In attesa della seconda firma per rilasciare i fondi)")
 			}
 
 		case "dispute-escrow":
@@ -412,27 +431,20 @@ func main() {
 			}
 			escrowID := parts[1]
 			reason := strings.Join(parts[2:], " ")
-
 			priv, myID := getOrCreateKey(currentUserIdentity)
 			parent := engine.GetLastHash()
 			nonce := getNextNonce(myID)
 
-			disputeData := map[string]string{
-				"escrow_id":   escrowID,
-				"description": reason,
-			}
+			disputeData := map[string]string{"escrow_id": escrowID, "description": reason}
 			disputeJSON, _ := json.Marshal(disputeData)
 
 			ev := NewEvent(ESCROW_DISPUTE, parent, myID, "", 0, time.Now().UnixNano(), nonce, 0, string(disputeJSON))
 			ev.Sign(priv)
 
 			if err := engine.ProcessEvent(ev); err != nil {
-				fmt.Printf("Errore apertura disputa: %v\n", err)
+				fmt.Printf("Errore: %v\n", err)
 			} else {
 				fmt.Printf("⚠️ DISPUTA aperta su ESCROW %s\n", escrowID[:16])
-				fmt.Printf("   Motivo: %s\n", reason)
-				fmt.Printf("   Nonce: %d\n", nonce)
-				fmt.Println("   (In attesa della risoluzione dell'arbitro)")
 			}
 
 		case "check-expired":
@@ -453,7 +465,7 @@ func main() {
 
 			fmt.Println("\n--- MESSAGGI RICEVUTI ---")
 			if len(msgs) == 0 {
-				fmt.Println("Nessun messaggio nella tua casella.")
+				fmt.Println("Nessun messaggio.")
 			} else {
 				for _, m := range msgs {
 					t := time.Unix(0, m.Timestamp).Format("15:04")
@@ -462,14 +474,70 @@ func main() {
 			}
 			fmt.Println("-------------------------")
 
+		case "chat":
+			if currentUserIdentity == "" {
+				fmt.Println("Identita non caricata.")
+				continue
+			}
+			if len(parts) < 2 {
+				fmt.Println("Uso: chat <ID_contatto>")
+				continue
+			}
+			contactID := parts[1]
+			_, myID := getOrCreateKey(currentUserIdentity)
+			myXPriv, _ := getOrCreateX25519Key(currentUserIdentity)
+			
+			chatEvents := engine.SyncRecentEvents(myID, contactID, 50)
+			
+			fmt.Printf("\n💬 Chat con %s... (ultimi %d messaggi)\n", contactID[:16], len(chatEvents))
+			fmt.Println("─────────────────────────────────────")
+			
+			if len(chatEvents) == 0 {
+				fmt.Println("Nessun messaggio in questa conversazione.")
+			} else {
+				for _, msg := range chatEvents {
+					t := time.Unix(0, msg.Timestamp).Format("15:04")
+					direction := "→"
+					if msg.Sender == myID {
+						direction = "←"
+					}
+					
+					senderName := msg.Sender[:8]
+					if msg.Sender == myID {
+						senderName = "TU"
+					}
+					
+					displayText := msg.Memo
+					ciphertext, err := hex.DecodeString(msg.Memo)
+					if err == nil && len(ciphertext) > 0 {
+						otherXPub := engine.GetX25519PubKey(contactID)
+						if len(otherXPub) > 0 {
+							sharedSecret, err := ComputeSharedSecret(myXPriv, otherXPub)
+							if err == nil {
+								plaintext, err := DecryptMessage(sharedSecret, ciphertext)
+								if err == nil {
+									displayText = string(plaintext)
+								} else {
+									displayText = "[Errore decriptazione]"
+								}
+							}
+						} else {
+							displayText = "[Chiave interlocutore mancante]"
+						}
+					}
+					
+					fmt.Printf("[%s] %s %-8s: %s\n", t, direction, senderName, displayText)
+				}
+			}
+			fmt.Println("─────────────────────────────────────")
+
 		case "create-room":
 			if currentUserIdentity == "" {
-				fmt.Println("Devi prima creare un'identita con 'create <nome>'.")
+				fmt.Println("Identita non caricata.")
 				continue
 			}
 			if len(parts) != 4 {
 				fmt.Println("Uso: create-room <nome> <categoria> <prezzo>")
-				fmt.Println("Esempio: create-room B&B_Roma hospitality 300")
 				continue
 			}
 			roomName := strings.Trim(parts[1], "\"")
@@ -479,13 +547,7 @@ func main() {
 			priv, myID := getOrCreateKey(currentUserIdentity)
 			nonce := getNextNonce(myID)
 
-			roomData := Room{
-				Name:        roomName,
-				Description: "Creata via CLI PEP",
-				Category:    category,
-				IsPublic:    true,
-				BasePrice:   price,
-			}
+			roomData := Room{Name: roomName, Description: "Creata via CLI PEP", Category: category, IsPublic: true, BasePrice: price}
 			roomJSON, _ := json.Marshal(roomData)
 
 			parent := engine.GetLastHash()
@@ -493,41 +555,32 @@ func main() {
 			ev.Sign(priv)
 
 			if err := engine.ProcessEvent(ev); err != nil {
-				fmt.Printf("Errore creazione room: %v\n", err)
+				fmt.Printf("Errore: %v\n", err)
 			} else {
-				fmt.Printf("ROOM creata con successo: %s\n", roomName)
-				fmt.Printf("ID Room: %s\n", ev.ID)
-				fmt.Printf("Nonce: %d\n", nonce)
+				fmt.Printf("ROOM creata: %s\n", roomName)
 			}
 
 		case "list-rooms":
 			fmt.Println("\n--- MARKETPLACE LOCALE (DAG) ---")
 			rooms := engine.GetRooms()
 			if len(rooms) == 0 {
-				fmt.Println("Nessuna ROOM trovata nel registro locale.")
+				fmt.Println("Nessuna ROOM trovata.")
 			} else {
 				for id, room := range rooms {
 					visibility := "Pubblica"
-					if !room.IsPublic {
-						visibility = "Privata"
-					}
-					fmt.Printf(" [%s] %s\n", visibility, room.Name)
-					fmt.Printf("   ID: %s...\n", id[:16])
+					if !room.IsPublic { visibility = "Privata" }
+					fmt.Printf(" [%s] %s (ID: %s...)\n", visibility, room.Name, id[:16])
 					fmt.Printf("   Categoria: %s | Prezzo: %d Philia\n", room.Category, room.BasePrice)
-					fmt.Printf("   Proprietario: %s...\n", room.OwnerID[:16])
 					fmt.Println("   --------------------------------")
 				}
 			}
-			fmt.Println("--------------------------------")
 
 		case "connect":
 			if len(parts) != 2 {
 				fmt.Println("Uso: connect <multiaddr_peer>")
-				fmt.Println("Esempio: connect /ip4/127.0.0.1/tcp/4002/p2p/12D3KooW...")
 				continue
 			}
-			addrStr := parts[1]
-			maddr, err := multiaddr.NewMultiaddr(addrStr)
+			maddr, err := multiaddr.NewMultiaddr(parts[1])
 			if err != nil {
 				fmt.Printf("Indirizzo non valido: %v\n", err)
 				continue
@@ -547,11 +600,9 @@ func main() {
 		case "sync":
 			if len(parts) != 2 {
 				fmt.Println("Uso: sync <peer_id>")
-				fmt.Println("Esempio: sync 12D3KooW...")
 				continue
 			}
-			peerIDStr := parts[1]
-			peerID, err := peer.Decode(peerIDStr)
+			peerID, err := peer.Decode(parts[1])
 			if err != nil {
 				fmt.Printf("Peer ID non valido: %v\n", err)
 				continue
@@ -559,7 +610,7 @@ func main() {
 
 			peerInfo := p2pNode.Host.Peerstore().PeerInfo(peerID)
 			if len(peerInfo.Addrs) == 0 {
-				fmt.Println("Peer non trovato. Usa prima 'connect <multiaddr>'.")
+				fmt.Println("Peer non trovato. Usa prima 'connect'.")
 				continue
 			}
 
@@ -605,22 +656,20 @@ func main() {
 
 		case "show-key":
 			if currentUserIdentity == "" {
-				fmt.Println("Devi prima creare un'identita con 'create <nome>'.")
+				fmt.Println("Identita non caricata.")
 				continue
 			}
 			priv, pub := getOrCreateKey(currentUserIdentity)
-			privHex := hex.EncodeToString(priv)
 			fmt.Printf("\n--- CHIAVI DI %s ---\n", currentUserIdentity)
 			fmt.Printf("ID Pubblico: %s\n", pub)
-			fmt.Printf("Chiave Privata: %s\n", privHex)
+			fmt.Printf("Chiave Privata: %s\n", hex.EncodeToString(priv))
 			fmt.Printf("Nonce corrente: %d\n", nonces[pub])
-			fmt.Printf("-------------------\n")
-			fmt.Println("Copia la chiave privata per importarla nella web app.")
+			fmt.Println("-------------------")
 
 		case "exit":
 			fmt.Println("Salvataggio in corso...")
 			engine.Close()
-			fmt.Println("Uscita sicura. La tua chiave privata e stata eliminata dalla memoria.")
+			fmt.Println("Uscita sicura.")
 			return
 
 		default:

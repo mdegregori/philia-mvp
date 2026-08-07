@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"sync"
 	"time"
+        "encoding/hex"
 )
 
 // --- STRUTTURA ENGINE ---
 
 type Engine struct {
+        x25519Registry map[string][]byte // Mappa: Ed25519 PubKey -> X25519 PubKey
 	store      *Store
 	balances   map[string]int64       // SALDO CONTABILE (Ledger)
 	reserved   map[string]int64       // PARTITE PRENOTATE (Reserved)
@@ -28,18 +30,22 @@ type Engine struct {
 
 // --- COSTRUZIONE ---
 
+// --- COSTRUZIONE ---
+
 func NewEngine(store *Store) *Engine {
 	engine := &Engine{
-		store:      store,
-		balances:   make(map[string]int64),
-		reserved:   make(map[string]int64),
-		nonces:     make(map[string]uint64),
-		reputation: make(map[string]int),
-		rooms:      make(map[string]*Room),
-		escrows:    make(map[string]*Escrow),
-		orphanPool: make(map[string]Event),
-		messages:   make(map[string][]Event),
-		agreements: make(map[string][]Event),
+		store:          store,
+		balances:       make(map[string]int64),
+		reserved:       make(map[string]int64),
+		nonces:         make(map[string]uint64),
+		reputation:     make(map[string]int),
+		rooms:          make(map[string]*Room),
+		escrows:        make(map[string]*Escrow),
+		eventLog:       make([]Event, 0),
+		orphanPool:     make(map[string]Event),
+		messages:       make(map[string][]Event),
+		agreements:     make(map[string][]Event),
+		x25519Registry: make(map[string][]byte), // La riga magica che mancava!
 	}
 
 	events, err := store.LoadEvents()
@@ -66,8 +72,12 @@ func (e *Engine) ProcessEvent(ev Event) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// DEBUG: stampa il tipo di evento
+	
+
 	// 1. Validazione strutturale
 	if err := ev.ValidateBasic(); err != nil {
+		
 		return err
 	}
 
@@ -86,8 +96,9 @@ func (e *Engine) ProcessEvent(ev Event) error {
 		return nil
 	}
 
-	// 5. Verifica causalità (parent exists)
-	if ev.Type != GENESIS {
+		// 5. Verifica causalità (parent exists)
+	// FIX: Permettiamo parent vuoto per GENESIS e KEY_ANNOUNCE (primi eventi)
+	if ev.Type != GENESIS && ev.Type != "KEY_ANNOUNCE" {
 		if !e.parentExists(ev.ParentHash) {
 			fmt.Printf("⏳ Evento %s è ORFANO (attesa genitore %s)\n", ev.ID[:8], ev.ParentHash[:8])
 			e.orphanPool[ev.ID] = ev
@@ -95,24 +106,31 @@ func (e *Engine) ProcessEvent(ev Event) error {
 		}
 	}
 
-	// 6. Verifica double spend (se PAYMENT)
+	// 6. Registra la chiave pubblica X25519 se è un annuncio
+	if ev.Type == "KEY_ANNOUNCE" {
+		keyBytes, err := hex.DecodeString(ev.Memo)
+		if err == nil {
+			e.x25519Registry[ev.Sender] = keyBytes
+		}
+	}
+
+	// 7. Verifica double spend (se PAYMENT)
 	if ev.Type == PAYMENT {
 		e.checkDoubleSpend(ev)
 	}
 
-	// 7. Applica evento
+	// 8. Applica evento
 	if err := e.applyEventInternal(ev); err != nil {
 		return err
 	}
 
-	// 8. Persisti (append-only)
+		// 9. Persisti (append-only)
 	if err := e.store.AppendEvent(ev); err != nil {
 		return fmt.Errorf("errore salvataggio: %w", err)
 	}
 
-	// 9. Aggiorna log e processa orfani
+	// 10. Aggiungi al log in memoria (QUESTA RIGA MANCAVA!)
 	e.eventLog = append(e.eventLog, ev)
-	e.processOrphans()
 
 	return nil
 }
@@ -162,6 +180,11 @@ func (e *Engine) applyEventInternal(ev Event) error {
 	case GENESIS:
 		e.balances[ev.Sender] += ev.Amount
 		fmt.Printf("GENESIS: Account %s balance updated to %d\n", ev.Sender[:8], e.balances[ev.Sender])
+	
+        case "KEY_ANNOUNCE":
+		// Nessun effetto sullo stato: serve solo a registrare la chiave X25519
+		// (la registrazione avviene già in ProcessEvent)
+		ev.Status = "CONFIRMED"
 
 	case PAYMENT:
 		// Controlla se il PAYMENT è scaduto (TTL)
@@ -691,5 +714,74 @@ func (e *Engine) SyncEvents(fromID string, limit int) []Event {
 		return []Event{}
 	}
 
-	return e.eventLog[startIndex:endIndex]
+			return e.eventLog[startIndex:endIndex]
+}
+
+// SyncRecentEvents restituisce gli ultimi N eventi di chat tra due utenti
+// (sia inviati che ricevuti). Pensato per nodi leggeri (mobile).
+func (e *Engine) SyncRecentEvents(userID, contactID string, limit int) []Event {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if limit <= 0 || limit > 500 {
+		limit = 50 // Default: ultimi 50 messaggi
+	}
+
+	var chatEvents []Event
+
+	// Scansione del log: tieni solo i MESSAGE scambiati tra userID e contactID
+	for _, ev := range e.eventLog {
+		if ev.Type != MESSAGE {
+			continue
+		}
+		// Messaggio da userID a contactID
+		if ev.Sender == userID && ev.Recipient == contactID {
+			chatEvents = append(chatEvents, ev)
+			continue
+		}
+		// Messaggio da contactID a userID
+		if ev.Sender == contactID && ev.Recipient == userID {
+			chatEvents = append(chatEvents, ev)
+			continue
+		}
+	}
+
+	// Se abbiamo più messaggi del limite, prendiamo solo gli ultimi
+	if len(chatEvents) > limit {
+		chatEvents = chatEvents[len(chatEvents)-limit:]
+	}
+
+	return chatEvents
+}
+
+// GetChatContacts restituisce la lista dei contatti con cui l'utente ha chattato
+func (e *Engine) GetChatContacts(userID string) []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	contactSet := make(map[string]bool)
+	for _, ev := range e.eventLog {
+		if ev.Type != MESSAGE {
+			continue
+		}
+		if ev.Sender == userID && ev.Recipient != "" {
+			contactSet[ev.Recipient] = true
+		}
+		if ev.Recipient == userID && ev.Sender != "" {
+			contactSet[ev.Sender] = true
+		}
+	}
+
+	var contacts []string
+	for c := range contactSet {
+		contacts = append(contacts, c)
+	}
+		return contacts
+}
+
+// GetX25519PubKey restituisce la chiave pubblica X25519 di un utente
+func (e *Engine) GetX25519PubKey(userID string) []byte {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.x25519Registry[userID]
 }
