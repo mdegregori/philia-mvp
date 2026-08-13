@@ -15,14 +15,21 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+	github.com/dgraph-io/badger/v4 v4.9.6 // indirect
+	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/ipfs/go-cid v0.5.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/koron/go-ssdp v0.0.6 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
@@ -75,6 +82,10 @@ require (
 	github.com/quic-go/webtransport-go v0.10.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/otel v1.41.0 // indirect
+	go.opentelemetry.io/otel/metric v1.41.0 // indirect
+	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
@@ -90,6 +101,6 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.7 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )

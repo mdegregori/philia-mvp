@@ -36,4 +36,4 @@ Thumbs.db
 # File temporanei
 *.tmp
 *.bak
-*.orig
+*.origdata/ 

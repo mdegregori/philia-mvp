@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+        "log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -107,7 +108,11 @@ func main() {
 	fmt.Println("         create-room, list-rooms, connect, sync, anchor, verify, show-key, exit")
 	fmt.Println("==========================================")
 
-	store := NewStore(dataDir)
+	store, err := NewStore(dataDir)
+if err != nil {
+    log.Fatalf("❌ Errore apertura database: %v", err)
+}
+defer store.Close()
 	engine := NewEngine(store)
 	defer engine.Close()
 

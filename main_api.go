@@ -21,7 +21,11 @@ func runAPIServer() {
 	fmt.Println("🔒 Modalità PRODUZIONE: Validazione crittografica obbligatoria.")
 	fmt.Println("📊 Endpoint: balance, submit, rooms, messages, agreements, reputation, escrow")
 
-	store := NewStore(dataDir)
+store, err := NewStore(dataDir)
+if err != nil {
+    log.Fatalf("❌ Errore apertura database: %v", err)
+}
+defer store.Close()
 	engine := NewEngine(store)
 	defer engine.Close()
 
