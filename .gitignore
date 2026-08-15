@@ -1,39 +1,4 @@
-# File di dati locali (log, wallet, snapshot)
-*.log
-*.json
-!go.mod
-!go.sum
-
-# Cartelle di test (dati generati durante lo sviluppo)
-Alice/
-Bob/
-data-*/
-data_dag_*/
-data_node*/
-
-# Documenti (non necessari per il deploy)
-*.odt
-*.docx
-*.pdf
-*.txt
-!README.md
-
-# File eseguibili (compilati per Windows/Linux/macOS)
-*.exe
-*.dll
-*.so
-*.dylib
-go
-
-# File di sistema e IDE
-*.swp
-*.swo
-.idea/
-.vscode/
-Thumbs.db
-.DS_Store
-
-# File temporanei
-*.tmp
-*.bak
-*.origdata/ 
+data/ 
+data2/ 
+*.log 
+*.bak 

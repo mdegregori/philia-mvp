@@ -19,7 +19,7 @@ type P2PNode struct {
 }
 
 func NewP2PNode(ctx context.Context, port int, engine *Engine) (*P2PNode, error) {
-	h, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)))
+	h, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)))
 	if err != nil {
 		return nil, err
 	}
