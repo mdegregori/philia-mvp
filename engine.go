@@ -785,3 +785,68 @@ func (e *Engine) GetX25519PubKey(userID string) []byte {
 	defer e.mu.RUnlock()
 	return e.x25519Registry[userID]
 }
+
+// processBatch elabora e salva un blocco di eventi ricevuti durante il sync
+func (e *Engine) processBatch(events []Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var eventsToSave []Event
+
+	for _, ev := range events {
+		// 1. Skip duplicati
+		if e.HasEvent(ev.ID) {
+			continue
+		}
+
+		// 2. Validazione base e firma
+		if err := ev.ValidateBasic(); err != nil {
+			continue
+		}
+		if err := ev.Verify(); err != nil {
+			continue
+		}
+
+		// 3. Anti-replay
+		if err := e.validateNonce(ev); err != nil {
+			continue
+		}
+
+		// 4. Verifica causalità (parent exists)
+		if ev.Type != GENESIS && ev.Type != "KEY_ANNOUNCE" {
+			if !e.parentExists(ev.ParentHash) {
+				e.orphanPool[ev.ID] = ev
+				continue
+			}
+		}
+
+		// 5. Registra chiave X25519 se è un annuncio
+		if ev.Type == "KEY_ANNOUNCE" {
+			keyBytes, err := hex.DecodeString(ev.Memo)
+			if err == nil {
+				e.x25519Registry[ev.Sender] = keyBytes
+			}
+		}
+
+		// 6. Applica evento allo stato in memoria
+		if err := e.applyEventInternal(ev); err != nil {
+			continue
+		}
+
+		// 7. Aggiungi alla lista di quelli da salvare
+		eventsToSave = append(eventsToSave, ev)
+		e.eventLog = append(e.eventLog, ev)
+	}
+
+	// 8. SALVATAGGIO BATCH: Una sola transazione per tutti gli eventi validi!
+	if len(eventsToSave) > 0 {
+		if err := e.store.AppendEvents(eventsToSave); err != nil {
+			fmt.Printf("⚠️ Errore salvataggio batch: %v\n", err)
+		} else {
+			fmt.Printf("✅ Salvati %d eventi in batch su BadgerDB\n", len(eventsToSave))
+		}
+	}
+
+	// 9. Prova a risolvere gli eventi orfani che ora potrebbero avere il genitore
+	e.processOrphans()
+}

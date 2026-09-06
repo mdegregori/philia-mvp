@@ -171,3 +171,20 @@ func (s *Store) GetEvent(id string) (Event, error) {
 	})
 	return ev, err
 }
+
+// AppendEvents salva più eventi in un'unica transazione batch (più veloce)
+func (s *Store) AppendEvents(events []Event) error {
+	return s.db.Update(func(txn *badger.Txn) error {
+		for _, ev := range events {
+			key := []byte("evt:" + ev.ID)
+			value, err := json.Marshal(ev)
+			if err != nil {
+				return fmt.Errorf("errore marshaling evento: %w", err)
+			}
+			if err := txn.Set(key, value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

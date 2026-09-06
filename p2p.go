@@ -49,29 +49,10 @@ func (n *P2PNode) handleIncomingStream(s network.Stream) {
 	}
 }
 
-// processBatch applica un batch di eventi ordinandoli topologicamente e verificando l'applicazione
+// processBatch delega l'elaborazione e il salvataggio in batch direttamente all'Engine
 func (n *P2PNode) processBatch(events []Event) {
-	sorted := topologicalSort(events)
-	applied := 0
-	
-	for _, ev := range sorted {
-		if n.Engine.HasEvent(ev.ID) {
-			continue // Già presente
-		}
-		
-		if err := n.Engine.ProcessEvent(ev); err != nil {
-			fmt.Printf("⚠️ Errore applicazione evento %s (%s): %v\n", ev.Type, ev.ID[:8], err)
-			continue
-		}
-		
-		// Verifica reale: l'evento è entrato nel log o è finito in orphanPool?
-		if n.Engine.HasEvent(ev.ID) {
-			applied++
-		} else {
-			fmt.Printf("⏳ Evento %s (%s) rimane in attesa (genitore mancante)\n", ev.Type, ev.ID[:8])
-		}
-	}
-	fmt.Printf("✅ Elaborati %d/%d eventi con successo.\n", applied, len(events))
+	fmt.Printf("📥 Ricevuti %d eventi dal peer. Delego elaborazione e salvataggio batch all'Engine...\n", len(events))
+	n.Engine.processBatch(events)
 }
 
 func (n *P2PNode) handleSyncStream(s network.Stream) {
