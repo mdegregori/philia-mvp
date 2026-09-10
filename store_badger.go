@@ -1,12 +1,13 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-	"sort" // <-- AGGIUNTO per ordinare il replay
+    "encoding/json"
+    "fmt"
+    "log"
+    "sort"
 
-	"github.com/dgraph-io/badger/v4"
+    "github.com/dgraph-io/badger/v4"
+    "github.com/dgraph-io/badger/v4/options" // <-- AGGIUNTO per la compressione
 )
 
 // Store rappresenta il livello di persistenza su BadgerDB
@@ -17,15 +18,16 @@ type Store struct {
 
 // NewStore apre o crea il database Badger nella directory dataDir
 func NewStore(dataDir string) (*Store, error) {
-	opts := badger.DefaultOptions(dataDir).
-		WithLogger(nil) // Disabilita il logger verbose di default
+    opts := badger.DefaultOptions(dataDir).
+        WithLogger(nil).
+        WithCompression(options.Snappy) // 🚀 Compressione nativa Snappy attiva
 
-	db, err := badger.Open(opts)
-	if err != nil {
-		return nil, fmt.Errorf("errore apertura BadgerDB: %w", err)
-	}
+    db, err := badger.Open(opts)
+    if err != nil {
+        return nil, fmt.Errorf("errore apertura BadgerDB: %w", err)
+    }
 
-	return &Store{db: db}, nil
+    return &Store{db: db}, nil
 }
 
 // Close chiude il database
