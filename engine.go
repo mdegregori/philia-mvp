@@ -54,16 +54,18 @@ func NewEngine(store *Store) *Engine {
 		return engine
 	}
 
-	fmt.Printf("✅ Engine loaded. Replay di %d eventi dal disco.\n", len(events))
-	for _, ev := range events {
-		engine.applyEventInternal(ev)
-		engine.eventLog = append(engine.eventLog, ev)
-		// Ricostruisci i nonce dal log
-		if ev.Nonce > engine.nonces[ev.Sender] {
-			engine.nonces[ev.Sender] = ev.Nonce
-		}
-	}
-	return engine
+	   fmt.Printf("🔄 Caricamento di %d eventi dal disco...\n", len(events))
+   for _, ev := range events {
+       engine.applyEventInternal(ev)
+       engine.eventLog = append(engine.eventLog, ev)
+       // Ricostruisci i nonce dal log
+       if ev.Nonce > engine.nonces[ev.Sender] {
+           engine.nonces[ev.Sender] = ev.Nonce
+       }
+   }
+   // 🚀 NUOVO: Riepilogo pulito e professionale all'avvio
+   fmt.Printf("✅ Avvio completato: %d eventi nel DAG, %d identità attive, %d orfani in attesa.\n", len(engine.eventLog), len(engine.nonces), len(engine.orphanPool))
+   return engine
 }
 
 // --- PROCESSAMENTO EVENTI ---
@@ -177,9 +179,9 @@ func (e *Engine) processOrphans() {
 func (e *Engine) applyEventInternal(ev Event) error {
 	switch ev.Type {
 
-	case GENESIS:
+	case GENESIS: 
 		e.balances[ev.Sender] += ev.Amount
-		fmt.Printf("GENESIS: Account %s balance updated to %d\n", ev.Sender[:8], e.balances[ev.Sender])
+	     //	fmt.Printf("GENESIS: Account %s balance updated to %d\n", ev.Sender[:8], e.balances[ev.Sender])
 	
         case "KEY_ANNOUNCE":
 		// Nessun effetto sullo stato: serve solo a registrare la chiave X25519
