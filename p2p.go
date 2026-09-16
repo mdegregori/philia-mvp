@@ -51,7 +51,6 @@ func (n *P2PNode) handleIncomingStream(s network.Stream) {
 
 // processBatch delega l'elaborazione e il salvataggio in batch direttamente all'Engine
 func (n *P2PNode) processBatch(events []Event) {
-	fmt.Printf("📥 Ricevuti %d eventi dal peer. Delego elaborazione e salvataggio batch all'Engine...\n", len(events))
 	n.Engine.processBatch(events)
 }
 
