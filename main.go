@@ -206,6 +206,7 @@ defer store.Close()
 			} else {
 				fmt.Printf("Ricevuti %d Philia (GENESIS) | Nonce: %d\n", amount, nonce)
 			}
+	
 
 		case "balance":
 			if currentUserIdentity == "" {
@@ -670,6 +671,29 @@ defer store.Close()
 			fmt.Printf("Chiave Privata: %s\n", hex.EncodeToString(priv))
 			fmt.Printf("Nonce corrente: %d\n", nonces[pub])
 			fmt.Println("-------------------")
+		case "status":
+			if currentUserIdentity == "" {
+				fmt.Println("⚠️ Identità non caricata. Usa 'create' o 'import' prima.")
+				continue
+			}
+			
+			// Ottieni i dati dall'Engine
+			total, orphans, bal, res, rep, trust := engine.GetStatus(currentUserIdentity)
+			
+			// Calcola lo spazio disco (usa la variabile dataDir già presente nel tuo main)
+			dirSize, _ := getDirSize(dataDir)
+			
+			// Stampa la dashboard formattata
+			fmt.Println("\n📊 === STATO NODO PEP ===")
+			fmt.Printf("🔹 Eventi nel DAG:      %d\n", total)
+			fmt.Printf("🔹 Eventi orfani:       %d\n", orphans)
+			fmt.Printf("🔹 Spazio disco (data): %s\n", formatBytes(dirSize))
+			fmt.Println("------------------------")
+			fmt.Printf("👤 Identità:            %s\n", currentUserIdentity)
+			fmt.Printf("💰 Saldo disponibile:   %d Philia\n", bal-res)
+			fmt.Printf("🔒 Saldo prenotato:     %d Philia\n", res)
+			fmt.Printf("⭐ Reputazione:         %d (Livello: %s)\n", rep, trust)
+			fmt.Println("========================\n")
 
 		case "exit":
 			fmt.Println("Salvataggio in corso...")
@@ -714,4 +738,37 @@ func loadKeysFromDisk(dir string) map[string]ed25519.PrivateKey {
 func parseInt(s string) int64 {
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n
+}
+
+// ====================================================================
+// FUNZIONI HELPER PER IL COMANDO STATUS
+// ====================================================================
+
+// getDirSize calcola ricorsivamente la dimensione in byte di una directory
+func getDirSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
+}
+
+// formatBytes converte i byte in una stringa leggibile (KB, MB, GB)
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

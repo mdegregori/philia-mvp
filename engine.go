@@ -1,4 +1,4 @@
-package main
+ package main
 
 import (
 	"crypto/sha256"
@@ -849,6 +849,26 @@ func (e *Engine) processBatch(events []Event) {
 		}
 	}
 
-	// 9. Prova a risolvere gli eventi orfani che ora potrebbero avere il genitore
+		// 9. Prova a risolvere gli eventi orfani che ora potrebbero avere il genitore
 	e.processOrphans()
+} // <--- QUESTA È LA CHIUSURA CORRETTA DI processBatch
+
+// GetStatus restituisce una panoramica completa dello stato del nodo per l'utente specificato
+func (e *Engine) GetStatus(userID string) (totalEvents, orphans int, balance, reserved int64, repScore int, trustLevel string) {
+	e.mu.RLock()
+	totalEvents = len(e.eventLog)
+	orphans = len(e.orphanPool)
+	if userID != "" {
+		balance = e.balances[userID]
+		reserved = e.reserved[userID]
+	}
+	e.mu.RUnlock()
+
+	// Calcoliamo la reputazione fuori dal lock per evitare deadlock (GetReputation scorre eventLog)
+	if userID != "" {
+		r := e.GetReputation(userID)
+		repScore = r.Score
+		trustLevel = r.TrustLevel
+	}
+	return
 }
