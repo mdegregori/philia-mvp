@@ -13,7 +13,6 @@ import (
         "log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -580,6 +579,45 @@ defer store.Close()
 					fmt.Println("   --------------------------------")
 				}
 			}
+		case "buy":
+			if currentUserIdentity == "" {
+				fmt.Println("⚠️ Identità non caricata. Usa 'create' o 'import' prima.")
+				continue
+			}
+			if len(parts) != 4 {
+				fmt.Println("Uso: buy <ID_venditore> <importo> <room_id>")
+				continue
+			}
+			sellerID := parts[1]
+			amount := parseInt(parts[2])
+			roomID := parts[3]
+
+			if amount <= 0 {
+				fmt.Println("L'importo deve essere positivo.")
+				continue
+			}
+
+			priv, myID := getOrCreateKey(currentUserIdentity)
+			parent := engine.GetLastHash()
+			nonce := getNextNonce(myID)
+			
+			// Il memo lega esplicitamente il pagamento alla Room, creando il "ponte"
+			memo := fmt.Sprintf("Acquisto in Room: %s", roomID)
+
+			ev := NewEvent(PAYMENT, parent, myID, sellerID, amount, time.Now().UnixNano(), nonce, 0, memo)
+			ev.Sign(priv)
+
+			if err := engine.ProcessEvent(ev); err != nil {
+				fmt.Printf("❌ Errore acquisto: %v\n", err)
+			} else {
+				fmt.Printf("🛒 ACQUISTO INIZIATO: %d Philia prenotati per %s...\n", amount, sellerID[:8])
+				   displayRoomID := roomID
+   if len(roomID) > 16 {
+       displayRoomID = roomID[:16]
+   }
+   fmt.Printf("   📎 Riferimento Room: %s\n", displayRoomID)
+				fmt.Printf("   💡 Prossimo passo: il venditore usa 'settle %s %d' per completare.\n", sellerID, amount)
+			}
 
 		case "connect":
 			if len(parts) != 2 {
@@ -735,40 +773,3 @@ func loadKeysFromDisk(dir string) map[string]ed25519.PrivateKey {
 	return loadedKeys
 }
 
-func parseInt(s string) int64 {
-	n, _ := strconv.ParseInt(s, 10, 64)
-	return n
-}
-
-// ====================================================================
-// FUNZIONI HELPER PER IL COMANDO STATUS
-// ====================================================================
-
-// getDirSize calcola ricorsivamente la dimensione in byte di una directory
-func getDirSize(path string) (int64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return nil
-	})
-	return size, err
-}
-
-// formatBytes converte i byte in una stringa leggibile (KB, MB, GB)
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
