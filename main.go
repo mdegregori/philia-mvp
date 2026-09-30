@@ -579,6 +579,110 @@ defer store.Close()
 					fmt.Println("   --------------------------------")
 				}
 			}
+				case "room-info":
+			if len(parts) != 2 {
+				fmt.Println("Uso: room-info <room_id>")
+				continue
+			}
+			roomPrefix := parts[1]
+			rooms := engine.GetRooms()
+			
+			// Cerca la room per prefisso (come git con gli hash dei commit)
+			var foundRoom *Room
+			var foundID string
+			for id, room := range rooms {
+				if strings.HasPrefix(id, roomPrefix) {
+					foundRoom = room
+					foundID = id
+					break
+				}
+			}
+			
+			if foundRoom == nil {
+				fmt.Printf("❌ Room con prefisso '%s' non trovata nel DAG locale.\n", roomPrefix)
+				continue
+			}
+			
+			// Ottieni la reputazione del proprietario
+			rep := engine.GetReputation(foundRoom.OwnerID)
+			visibility := "Pubblica"
+			if !foundRoom.IsPublic {
+				visibility = "Privata"
+			}
+			
+			fmt.Println("\n📋 === DETTAGLI ROOM ===")
+			fmt.Printf("🏪 Nome:        %s\n", foundRoom.Name)
+			fmt.Printf("📂 Categoria:   %s\n", foundRoom.Category)
+			fmt.Printf("💰 Prezzo:      %d Philia\n", foundRoom.BasePrice)
+			fmt.Printf("👁️  Visibilità:  %s\n", visibility)
+			fmt.Printf("👤 Proprietario: %s...\n", foundRoom.OwnerID[:16])
+			fmt.Printf("⭐ Reputazione:  %d (Livello: %s)\n", rep.Score, rep.TrustLevel)
+			fmt.Printf("🔑 ID Completo: %s\n", foundID)
+			fmt.Println("=======================\n")
+		case "buy-escrow":
+			if currentUserIdentity == "" {
+				fmt.Println("⚠️ Identità non caricata. Usa 'create' o 'import' prima.")
+				continue
+			}
+			if len(parts) != 2 {
+				fmt.Println("Uso: buy-escrow <room_id>")
+				continue
+			}
+			roomPrefix := parts[1]
+			rooms := engine.GetRooms()
+			
+			// 1. Trova la room per prefisso
+			var foundRoom *Room
+			var foundID string
+			for id, room := range rooms {
+				if strings.HasPrefix(id, roomPrefix) {
+					foundRoom = room
+					foundID = id
+					break
+				}
+			}
+			
+			if foundRoom == nil {
+				fmt.Printf("❌ Room con prefisso '%s' non trovata.\n", roomPrefix)
+				continue
+			}
+			
+			// 2. Estrai automaticamente venditore e prezzo dalla Room
+			sellerID := foundRoom.OwnerID
+			amount := foundRoom.BasePrice
+			
+			if amount <= 0 {
+				fmt.Println("❌ Prezzo della room non valido.")
+				continue
+			}
+
+			priv, myID := getOrCreateKey(currentUserIdentity)
+			parent := engine.GetLastHash()
+			nonce := getNextNonce(myID)
+
+			// 3. Crea l'oggetto Escrow collegato alla Room
+			escrowID := fmt.Sprintf("esc_%s_%d", myID[:8], time.Now().Unix())
+			escrow := Escrow{
+				ID: escrowID, Buyer: myID, Seller: sellerID,
+				Arbitrator: "0000000000000000000000000000000000000000000000000000000000000000", 
+				Amount: amount, Description: fmt.Sprintf("Acquisto Room: %s (ID: %s)", foundRoom.Name, foundID), RequiredSigs: 2,
+				Signatures: make(map[string]string),
+				CreatedAt: time.Now().UnixNano(),
+				ExpiresAt: time.Now().Add(7 * 24 * time.Hour).UnixNano(),
+			}
+			escrowJSON, _ := json.Marshal(escrow)
+
+			// 4. Crea e firma l'evento ESCROW_LOCK
+			ev := NewEvent(ESCROW_LOCK, parent, myID, sellerID, amount, time.Now().UnixNano(), nonce, 0, string(escrowJSON))
+			ev.Sign(priv)
+
+			if err := engine.ProcessEvent(ev); err != nil {
+				fmt.Printf("❌ Errore creazione escrow: %v\n", err)
+			} else {
+				fmt.Printf("🔒 ACQUISTO SICURO INIZIATO: %d Philia bloccati in Escrow per %s...\n", amount, sellerID[:8])
+				fmt.Printf("   📎 Riferimento Room: %s (%s)\n", foundRoom.Name, foundID[:16])
+				fmt.Printf("   💡 Prossimo passo: il venditore usa 'release-escrow %s' per sbloccare i fondi.\n", escrowID)
+			}
 		case "buy":
 			if currentUserIdentity == "" {
 				fmt.Println("⚠️ Identità non caricata. Usa 'create' o 'import' prima.")
