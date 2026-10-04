@@ -105,12 +105,13 @@ type Event struct {
 }
 
 // AnchorRecord per la notarizzazione del registro
+
+// AnchorRecord definisce la struttura della prova di ancoraggio
 type AnchorRecord struct {
-	Date        string `json:"date"`
-	EventCount  int    `json:"event_count"`
-	LogHash     string `json:"log_hash"`
-	TxHash      string `json:"tx_hash"`
-	BlockNumber int64  `json:"block_number"`
+	Timestamp int64  `json:"timestamp"`
+	LogHash   string `json:"log_hash"`
+	TxHash    string `json:"tx_hash"`
+	Status    string `json:"status"`
 }
 
 // --- METODI DELL'EVENTO ---

@@ -54,9 +54,11 @@ func main() {
 		isValid := true
 		var errors []string
 
-		// CHECK 1: Integrità dell'Hash (i dati non sono stati alterati)
-		computedHash := ev.ComputeHash()
-		if ev.ID != computedHash {
+				// CHECK 1: Integrità dell'Hash (i dati non sono stati alterati)
+		// Creiamo una copia per ricalcolare l'ID senza modificare l'originale
+		tempEv := ev
+		tempEv.CalculateID()
+		if ev.ID != tempEv.ID {
 			isValid = false
 			errors = append(errors, "Hash non corrispondente")
 		}

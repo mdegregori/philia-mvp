@@ -1,4 +1,36 @@
-data/ 
-data2/ 
-*.log 
-*.bak 
+# Cartelle di runtime e dati locali
+data*/
+Alice/data/
+Bob/data/
+
+# File di log e backup
+*.log
+*.bak
+*.tmp
+
+# Binari compilati (eseguibili)
+*.exe
+*.exe~
+pep_node.exe
+
+# Dipendenze Go scaricate localmente
+pkg/
+
+# File temporanei di editor
+*~
+
+# File vecchi non più usati
+*.odt
+p2p_old.go.go
+store.go.bak
+main_anchor.go
+main_cli.go
+main_dag.go
+main_fresh.go
+main_p2p.go
+main_qr_gen.go
+main_qr_scan.go
+main_wallet.go
+main_api.go
+index.html
+engine_test.go
