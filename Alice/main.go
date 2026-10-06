@@ -108,15 +108,21 @@ func main() {
 	fmt.Println("==========================================")
 
 	store, err := NewStore(dataDir)
-if err != nil {
-    log.Fatalf("❌ Errore apertura database: %v", err)
-}
-defer store.Close()
+	if err != nil {
+		log.Fatalf("❌ Errore apertura database: %v", err)
+	}
+	defer store.Close()
+	
 	engine := NewEngine(store)
 	defer engine.Close()
 
+	// 1. Inizializza i nonce
 	initNonces(engine)
+	
+	// 2. RICOSTRUISCI IL REGISTRO DELLE CHIAVI X25519 DAL DISCO
+	engine.InitX25519Registry()
 
+	// 3. Avvia il nodo P2P
 	p2pNode, err := NewP2PNode(context.Background(), *p2pPort, engine)
 	if err != nil {
 		fmt.Printf("Errore avvio P2P: %v\n", err)
@@ -459,14 +465,27 @@ defer store.Close()
 			}
 			engine.checkExpiredPayments()
 			fmt.Println("✅ Controllo pagamenti scaduti completato")
-
-		case "list-messages":
+			
+					case "list-messages":
 			if currentUserIdentity == "" {
 				fmt.Println("Identita non caricata.")
 				continue
 			}
+			
+			// 1. Ottieni l'ID principale (Ed25519)
 			_, myID := getOrCreateKey(currentUserIdentity)
+			fmt.Printf("[DEBUG] Il mio ID Ed25519: %s\n", myID[:16])
+			
+			// 2. Ottieni le chiavi X25519
+			myXPriv, myXPub := getOrCreateX25519Key(currentUserIdentity)
+			if myXPriv == nil {
+				fmt.Println("❌ [DEBUG] Errore nel recupero delle chiavi X25519 di Alice.")
+				continue
+			}
+			fmt.Printf("[DEBUG] Mia chiave X25519 pubblica: %s\n", hex.EncodeToString(myXPub)[:16])
+
 			msgs := engine.GetMessages(myID)
+			fmt.Printf("[DEBUG] Trovati %d messaggi per il mio ID\n", len(msgs))
 
 			fmt.Println("\n--- MESSAGGI RICEVUTI ---")
 			if len(msgs) == 0 {
@@ -474,11 +493,59 @@ defer store.Close()
 			} else {
 				for _, m := range msgs {
 					t := time.Unix(0, m.Timestamp).Format("15:04")
-					fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], m.Memo)
+					displayText := m.Memo // Fallback
+
+					fmt.Printf("\n[DEBUG] Elaborazione messaggio da: %s\n", m.Sender[:16])
+
+					// 3. Decodifica hex
+					ciphertextBytes, err := hex.DecodeString(m.Memo)
+					if err != nil {
+						fmt.Printf("[DEBUG] ❌ Errore decodifica hex del memo: %v\n", err)
+						fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
+						continue
+					}
+					fmt.Printf("[DEBUG] ✅ Ciphertext decodificato: %d byte\n", len(ciphertextBytes))
+					
+					// 4. Recupera chiave X25519 del mittente
+					senderXPub := engine.GetX25519PubKey(m.Sender)
+					if len(senderXPub) == 0 {
+						fmt.Printf("[DEBUG] ❌ Chiave X25519 del mittente NON trovata nell'engine!\n")
+						fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
+						continue
+					}
+					fmt.Printf("[DEBUG] ✅ Chiave X25519 del mittente trovata: %s\n", hex.EncodeToString(senderXPub)[:16])
+					
+					if len(senderXPub) != 32 {
+						fmt.Printf("[DEBUG] ❌ Chiave X25519 del mittente ha lunghezza sbagliata: %d (deve essere 32)\n", len(senderXPub))
+						fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
+						continue
+					}
+					
+					// 5. Calcola segreto condiviso
+					sharedSecret, secErr := ComputeSharedSecret(myXPriv, senderXPub)
+					if secErr != nil {
+						fmt.Printf("[DEBUG] ❌ Errore calcolo segreto condiviso: %v\n", secErr)
+						fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
+						continue
+					}
+					fmt.Printf("[DEBUG] ✅ Segreto condiviso calcolato: %s\n", hex.EncodeToString(sharedSecret)[:16])
+					
+					// 6. Decritta
+					plaintextBytes, decErr := DecryptMessage(sharedSecret, ciphertextBytes)
+					if decErr != nil {
+						fmt.Printf("[DEBUG] ❌ Errore decrittazione AES-GCM: %v\n", decErr)
+						fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
+						continue
+					}
+					fmt.Printf("[DEBUG] ✅ Messaggio decrittato con successo!\n")
+					
+					displayText = string(plaintextBytes) + " 🔓"
+					fmt.Printf("[%s] Da %s...: %s\n", t, m.Sender[:8], displayText)
 				}
 			}
-			fmt.Println("-------------------------")
-
+			fmt.Println("\n-------------------------")
+			
+		
 		case "chat":
 			if currentUserIdentity == "" {
 				fmt.Println("Identita non caricata.")
