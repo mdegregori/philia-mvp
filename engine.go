@@ -132,6 +132,20 @@ func (e *Engine) ProcessEvent(ev Event) error {
 
 	return nil
 }
+// InitX25519Registry ricostruisce la mappa delle chiavi pubbliche X25519 all'avvio del nodo
+func (e *Engine) InitX25519Registry() {
+	count := 0
+	for _, ev := range e.GetEventLog() {
+		if ev.Type == "KEY_ANNOUNCE" {
+			keyBytes, err := hex.DecodeString(ev.Memo)
+			if err == nil {
+				e.x25519Registry[ev.Sender] = keyBytes
+				count++
+			}
+		}
+	}
+	fmt.Printf("✅ Registro chiavi X25519 ricostruito: %d chiavi caricate dal DAG\n", count)
+}
 
 // --- ORPHAN POOL ---
 
