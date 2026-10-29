@@ -59,6 +59,7 @@ func CreateAnchorEvent(parentHash, sender string, anchorData string, nonce uint6
 	return NewEvent(
 		"ANCHOR",
 		parentHash,
+		[]string{}, // 🔗 Slice vuota: l'anchor si appoggia al parentHash diretto
 		sender,
 		"",
 		0,

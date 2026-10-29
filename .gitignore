@@ -33,4 +33,8 @@ main_qr_scan.go
 main_wallet.go
 main_api.go
 index.html
-engine_test.go
+engine_test.godata_*/peer.key 
+data_*/ 
+pep.exe 
+.DS_Store 
+Thumbs.db 

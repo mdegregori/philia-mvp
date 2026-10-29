@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+        "os"
 )
 
 // --- STRUTTURA ENGINE ---
@@ -20,6 +21,7 @@ type Engine struct {
 	reserved       map[string]int64        // PARTITE PRENOTATE (Reserved)
 	nonces         map[string]uint64       // Anti-replay: ultimo nonce visto per identità
 	reputation     map[string]int          // Punteggio reputazione (calcolato on-DAG)
+        genesisIDs     map[string]bool         //Identità fondatrici con reputazione iniziale (Bootstrap)
 	rooms          map[string]*Room
 	escrows        map[string]*Escrow      // Contratti multi-firma attivi
 	eventLog       []Event
@@ -38,6 +40,7 @@ func NewEngine(store *Store) *Engine {
 		balances:       make(map[string]int64),
 		reserved:       make(map[string]int64),
 		nonces:         make(map[string]uint64),
+                genesisIDs:     make(map[string]bool),  //Inizializzazione mappa Genesis
 		reputation:     make(map[string]int),
 		rooms:          make(map[string]*Room),
 		escrows:        make(map[string]*Escrow),
@@ -48,6 +51,8 @@ func NewEngine(store *Store) *Engine {
 		agreements:     make(map[string][]Event),
 		x25519Registry: make(map[string][]byte),
 	}
+
+        engine.loadGenesisIDs()
 
 	events, err := store.LoadEvents()
 	if err != nil {
@@ -66,6 +71,30 @@ func NewEngine(store *Store) *Engine {
 	}
 	fmt.Printf("✅ Avvio completato: %d eventi nel DAG, %d identità attive, %d orfani in attesa.\n", len(engine.eventLog), len(engine.nonces), len(engine.orphanPool))
 	return engine
+}
+
+// loadGenesisIDs carica le identità fondatrici da genesis.json
+// Se il file non esiste, ne crea uno di default per permettere i test immediati.
+func (e *Engine) loadGenesisIDs() {
+	data, err := os.ReadFile("genesis.json")
+	if err != nil {
+		// File non trovato: creiamo un default con l'ID di Alice per i test
+		defaultGenesis := `{"founders": ["a1c4b1528432cea1dacd1131f4ba6ce8fb23cc06dff6ecfc7ee79041eec2616c"]}`
+		os.WriteFile("genesis.json", []byte(defaultGenesis), 0644)
+		data = []byte(defaultGenesis)
+	}
+
+	var genesis struct {
+		Founders []string `json:"founders"`
+	}
+	if err := json.Unmarshal(data, &genesis); err == nil {
+		for _, id := range genesis.Founders {
+			e.genesisIDs[id] = true
+		}
+		fmt.Printf("🌱 Bootstrap: caricate %d identità Genesis dal file.\n", len(genesis.Founders))
+	} else {
+		fmt.Printf("⚠️ Errore nel parsing di genesis.json: %v\n", err)
+	}
 }
 
 // --- PROCESSAMENTO EVENTI ---
@@ -116,6 +145,74 @@ func (e *Engine) ProcessEvent(ev Event) error {
 	if ev.Type == PAYMENT {
 		e.checkDoubleSpend(ev)
 	}
+	// 7.5. Politica Economica: Validazione rigorosa degli INVITE
+	if ev.Type == INVITE {
+		// A. Conta quanti inviti ha già fatto questo sender
+		inviteCount := 0
+		for _, e := range e.eventLog {
+			if e.Type == INVITE && e.Sender == ev.Sender {
+				inviteCount++
+			}
+		}
+
+		// B. Calcola il limite massimo (max 5, o Score/20)
+		// Usiamo e.reputation[ev.Sender] per evitare chiamate a funzioni che potrebbero lockare
+		baseRep := e.reputation[ev.Sender]
+		maxAllowed := 5
+		if baseRep > 0 {
+			calc := (baseRep + 19) / 20 // Arrotondamento per eccesso
+			if calc > 5 {
+				maxAllowed = calc
+			}
+		}
+
+		if inviteCount >= maxAllowed {
+			return fmt.Errorf("politica violata: limite inviti raggiunto (%d/%d) per %s", inviteCount, maxAllowed, ev.Sender[:8])
+		}
+
+		// C. Calcola il costo progressivo
+		var cost int64 = 1
+		if inviteCount >= 10 {
+			cost = 25
+		} else if inviteCount >= 5 {
+			cost = 5
+		}
+
+		// D. Verifica e brucia il saldo (atomico, siamo già sotto Lock)
+		if e.balances[ev.Sender] < cost {
+			return fmt.Errorf("politica violata: saldo insufficiente per fee invito (servono %d, hai %d)", cost, e.balances[ev.Sender])
+		}
+		
+		e.balances[ev.Sender] -= cost
+		fmt.Printf("🔥 [MOTORE] Fee invito di %d Philia bruciata da %s\n", cost, ev.Sender[:8])
+	}
+
+		// 7.6. Politica Economica: Validazione Anti-Spam Strict
+	if ev.Type == PAYMENT || ev.Type == MESSAGE {
+		now := time.Now().UnixNano()
+		cutoff := now - (24 * 60 * 60 * 1e9)
+		count := 0
+		for _, logEv := range e.eventLog {
+			if logEv.Sender == ev.Sender && logEv.Type == ev.Type && logEv.Timestamp >= cutoff {
+				count++
+			}
+		}
+
+		var limit int
+		if ev.Type == PAYMENT {
+			limit = 50
+		} else { // MESSAGE
+			limit = 150
+		}
+
+		if count >= limit {
+			// RIFIUTO SECCO: L'evento non entra nel DAG.
+			// Nessun slashing all'invitante: penalizzare un tentativo bloccato 
+			// è un vettore di attacco Sybil (griefing) contro l'invitante.
+			// La responsabilità solidale si applica solo a violazioni *confermate* nel DAG.
+			return fmt.Errorf("politica violata: limite anti-spam raggiunto (%d/%d %s)", count, limit, ev.Type)
+		}
+	}
 
 	// 8. Applica evento
 	if err := e.applyEventInternal(ev); err != nil {
@@ -129,6 +226,9 @@ func (e *Engine) ProcessEvent(ev Event) error {
 
 	// 10. Aggiungi al log in memoria
 	e.eventLog = append(e.eventLog, ev)
+
+       // 11. EFFETTTO A CASCATA: Controlla se questonuovo evento sblocca degli orfani
+       e.processOrphans()
 
 	return nil
 }
@@ -153,7 +253,24 @@ func (e *Engine) processOrphans() {
 	for {
 		processed := false
 		for id, ev := range e.orphanPool {
-			if e.parentExists(ev.ParentHash) {
+			// 1. Verifica che TUTTI i genitori dichiarati esistano (ParentHash + ParentRefs)
+			allParentsExist := true
+			
+			if ev.ParentHash != "" && !e.parentExists(ev.ParentHash) {
+				allParentsExist = false
+			}
+			
+			if allParentsExist {
+				for _, ref := range ev.ParentRefs {
+					if ref != "" && !e.parentExists(ref) {
+						allParentsExist = false
+						break
+					}
+				}
+			}
+
+			// 2. Se tutti i genitori ci sono, promuovi l'orfano
+			if allParentsExist {
 				if err := e.validateNonce(ev); err != nil {
 					fmt.Printf("⚠️ Orfano %s rigettato (nonce): %v\n", id[:8], err)
 					delete(e.orphanPool, id)
@@ -171,11 +288,11 @@ func (e *Engine) processOrphans() {
 				}
 				e.eventLog = append(e.eventLog, ev)
 				delete(e.orphanPool, id)
-				processed = true
+				processed = true // Continua il ciclo per vedere se questo sblocca altri orfani
 			}
 		}
 		if !processed {
-			break
+			break // Nessun orfano è stato processato in questo giro, esci dal ciclo
 		}
 	}
 	if len(e.orphanPool) > 0 {
@@ -186,11 +303,15 @@ func (e *Engine) processOrphans() {
 // --- APPLICAZIONE EVENTI (CORE) ---
 
 func (e *Engine) applyEventInternal(ev Event) error {
+	// 🔒 COMMIT DEL NONCE: Avviene solo ora che l'evento è stato validato e sta per essere applicato.
+	// Questo risolve il bug per cui gli orfani venivano rigettati come "replay" al secondo tentativo.
+	e.nonces[ev.Sender] = ev.Nonce
+
 	switch ev.Type {
-
-	case GENESIS:
-		e.balances[ev.Sender] += ev.Amount
-
+			case GENESIS:
+			
+			e.balances[ev.Sender] += ev.Amount
+			
 	case "KEY_ANNOUNCE":
 		ev.Status = "CONFIRMED"
 
@@ -215,7 +336,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		e.reserved[ev.Sender] -= ev.Amount
 		e.balances[ev.Sender] -= ev.Amount
 		e.balances[ev.Recipient] += ev.Amount
-		e.reputation[ev.Recipient] += 10
+		
 		ev.Status = "SETTLED"
 		fmt.Printf("SETTLE: Trasferiti %d da %s a %s | Reputazione %s: +10\n",
 			ev.Amount, ev.Sender[:8], ev.Recipient[:8], ev.Recipient[:8])
@@ -333,7 +454,7 @@ func (e *Engine) applyEventInternal(ev Event) error {
 			e.balances[escrow.Buyer] -= escrow.Amount
 			e.balances[escrow.Seller] += escrow.Amount
 			escrow.Status = "RELEASED"
-			e.reputation[escrow.Seller] += 10
+			
 			ev.Status = "SETTLED"
 			fmt.Printf("✅ ESCROW %s RILASCIATO: %d Philia a %s\n",
 				escrow.ID[:8], escrow.Amount, escrow.Seller[:8])
@@ -356,8 +477,19 @@ func (e *Engine) applyEventInternal(ev Event) error {
 		ev.Status = "PENDING"
 		fmt.Printf("⚠️ DISPUTA aperta su ESCROW %s: %s\n", escrow.ID[:8], dispute.Description)
 
+	case INVITE:
+		// Brucia la fee di invito dal saldo del mittente
+		if e.balances[ev.Sender] >= ev.Amount {
+			e.balances[ev.Sender] -= ev.Amount
+			fmt.Printf("🔥 INVITO: bruciati %d Philia da %s\n", ev.Amount, ev.Sender[:8])
+		} else {
+			return fmt.Errorf("saldo insufficiente per bruciare la fee di invito")
+		}
+
 	default:
 		return fmt.Errorf("tipo evento sconosciuto: %s", ev.Type)
+
+	
 	}
 
 	return nil
@@ -442,15 +574,20 @@ func (e *Engine) validateNonce(ev Event) error {
 	if ev.Nonce <= lastSeen {
 		return fmt.Errorf("REPLAY ATTACK: nonce %d già usato (ultimo visto: %d)", ev.Nonce, lastSeen)
 	}
-	if ev.Nonce == lastSeen+1 {
-		e.nonces[ev.Sender] = ev.Nonce
+	
+	// Opzionale ma consigliato: impedisce salti di nonce troppo ampi (anti-spam)
+	if ev.Nonce > lastSeen+10 { 
+		return fmt.Errorf("NONCE GAP: atteso circa %d, ricevuto %d", lastSeen+1, ev.Nonce)
 	}
+	
+	// 🔥 FIX CRUCIALE: NON aggiorniamo e.nonces qui. 
+	// Lo faremo solo in applyEventInternal, quando l'evento è davvero applicato.
 	return nil
 }
 
 // --- TTL & SCADENZA ---
 
-func (e *Engine) checkExpiredPayments() {
+func (e *Engine) CheckExpiredPayments() {
 	now := time.Now().UnixNano()
 	for i := range e.eventLog {
 		ev := &e.eventLog[i]
@@ -463,8 +600,13 @@ func (e *Engine) checkExpiredPayments() {
 		if ev.ExpiresAt > 0 && now > ev.ExpiresAt {
 			e.reserved[ev.Sender] -= ev.Amount
 			ev.Status = "EXPIRED"
-			e.reputation[ev.Sender] -= 5
-			fmt.Printf("⏰ PAYMENT %s SCADUTO: sbloccati %d Philia a %s\n",
+			
+			// 🔒 PERSISTENZA: Salva lo stato aggiornato nel database
+			if err := e.store.AppendEvent(*ev); err != nil {
+				fmt.Printf("❌ Errore salvataggio stato EXPIRED: %v\n", err)
+			}
+
+			fmt.Printf("⏰ PAYMENT %s SCADUTO: %d Philia sbloccati per %s\n",
 				ev.ID[:8], ev.Amount, ev.Sender[:8])
 		}
 	}
@@ -493,14 +635,19 @@ func (e *Engine) GetReputation(userID string) ReputationScore {
 		}
 	}
 
-	rep.Score = (rep.CompletedSales * 10) +
-		(rep.CompletedPurchases * 2) -
-		(rep.ExpiredPayments * 5) -
-		(rep.DisputesLost * 20)
+	        rep.Score = (rep.CompletedSales * 10) +
+                (rep.CompletedPurchases * 2) -
+                (rep.ExpiredPayments * 5) -
+                (rep.DisputesLost * 20)
 
-	rep.Score += e.reputation[userID]
+        rep.Score += e.reputation[userID]
 
-	switch {
+        // 🌱 LOGICA DI BOOTSTRAP: +50 per le identità Genesis
+        if e.genesisIDs[userID] {
+                rep.Score += 50
+        }
+
+        switch {
 	case rep.Score >= 100:
 		rep.TrustLevel = "VERIFIED"
 	case rep.Score >= 50:
@@ -657,11 +804,16 @@ func (e *Engine) calculateReputationInternal(userID string) ReputationScore {
 		}
 	}
 
-	rep.Score = (rep.CompletedSales * 10) +
+		rep.Score = (rep.CompletedSales * 10) +
 		(rep.CompletedPurchases * 2) -
 		(rep.ExpiredPayments * 5) -
 		(rep.DisputesLost * 20) +
 		e.reputation[userID]
+
+	// 🌱 LOGICA DI BOOTSTRAP: +50 per le identità Genesis
+	if e.genesisIDs[userID] {
+		rep.Score += 50
+	}
 
 	switch {
 	case rep.Score >= 100:
@@ -677,6 +829,16 @@ func (e *Engine) calculateReputationInternal(userID string) ReputationScore {
 	}
 
 	return rep
+}
+// findInviterInternal cerca l'invitante di un'identità nel DAG
+// Deve essere chiamata SOLO quando il lock è già acquisito
+func (e *Engine) findInviterInternal(userID string) string {
+	for _, ev := range e.eventLog {
+		if ev.Type == "KEY_ANNOUNCE" && ev.Sender == userID {
+			return ev.Recipient // L'invitante è nel campo Recipient
+		}
+	}
+	return ""
 }
 
 func (e *Engine) SyncHeader() map[string]interface{} {
@@ -814,8 +976,20 @@ func (e *Engine) processBatch(events []Event) {
 			continue
 		}
 
-		if ev.Type != GENESIS && ev.Type != "KEY_ANNOUNCE" {
-			if !e.parentExists(ev.ParentHash) {
+				if ev.Type != GENESIS && ev.Type != "KEY_ANNOUNCE" {
+			missingParent := false
+			if ev.ParentHash != "" && !e.parentExists(ev.ParentHash) {
+				missingParent = true
+			}
+			if !missingParent {
+				for _, ref := range ev.ParentRefs {
+					if ref != "" && !e.parentExists(ref) {
+						missingParent = true
+						break
+					}
+				}
+			}
+			if missingParent {
 				e.orphanPool[ev.ID] = ev
 				continue
 			}
@@ -863,4 +1037,88 @@ func (e *Engine) GetStatus(userID string) (totalEvents, orphans int, balance, re
 		trustLevel = r.TrustLevel
 	}
 	return
+}
+// CountEventsByTypeInLast24h conta gli eventi di un dato tipo creati da un'identità nelle ultime 24 ore
+func (e *Engine) CountEventsByTypeInLast24h(senderID string, eventType string) int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	
+	now := time.Now().UnixNano()
+	cutoff := now - (24 * 60 * 60 * 1e9) // 24 ore fa in nanosecondi
+	count := 0
+	
+	for _, ev := range e.eventLog { // <-- CORRETTO: era e.events
+		if ev.Sender == senderID && ev.Type == eventType && ev.Timestamp >= cutoff {
+			count++
+		}
+	}
+	
+	return count
+}
+// GetInviteStats calcola quanti inviti ha fatto un'identità e quanto costa il prossimo
+func (e *Engine) GetInviteStats(inviterID string) (currentInvites int, maxAllowed int, nextCost int64, currentScore int) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	
+	// 1. Conta tutti gli eventi INVITE fatti da questa identità
+	count := 0
+	for _, ev := range e.eventLog {
+		if ev.Sender == inviterID && ev.Type == INVITE {
+			count++
+		}
+	}
+	
+	// 2. Ottieni il punteggio di reputazione attuale
+	rep := e.GetReputation(inviterID)
+	currentScore = rep.Score
+	
+	// 3. Calcola il massimo consentito: max(5, ⌈Score/20⌉)
+	maxAllowed = 5
+	if currentScore > 0 {
+		ceilScore := (currentScore + 19) / 20 // Trucco per arrotondamento per eccesso in interi
+		if ceilScore > 5 {
+			maxAllowed = ceilScore
+		}
+	}
+	
+	// 4. Calcola il costo del prossimo invito
+	if count < 5 {
+		nextCost = 1
+	} else if count < 10 {
+		nextCost = 5
+	} else {
+		nextCost = 25
+	}
+	
+	return count, maxAllowed, nextCost, currentScore
+}
+
+// GetAdaptiveParentRefs restituisce gli ID degli eventi recenti da usare come genitori nel DAG.
+// Implementa la logica adattiva: max(60s, 3 * T_lat). Qui usiamo una finestra di 60 secondi, max 3 riferimenti.
+func (e *Engine) GetAdaptiveParentRefs() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	var refs []string
+	now := time.Now().UnixNano()
+	window := int64(60 * 1e9) // 60 secondi in nanosecondi
+	cutoff := now - window
+
+	count := 0
+	// Scansiona all'indietro dall'evento più recente
+	for i := len(e.eventLog) - 1; i >= 0 && count < 3; i-- {
+		ev := e.eventLog[i]
+		if ev.Timestamp >= cutoff {
+			refs = append(refs, ev.ID)
+			count++
+		}
+	}
+
+	// Fallback di sicurezza: se il DAG è vuoto o nessun evento rientra nella finestra, 
+	// usa almeno l'ultimo evento assoluto per non spezzare la catena.
+	if len(refs) == 0 && len(e.eventLog) > 0 {
+		refs = append(refs, e.eventLog[len(e.eventLog)-1].ID)
+	}
+
+	return refs
 }

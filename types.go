@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"time"
+        "strings"
 )
 
 // --- COSTANTI PER I TIPI DI EVENTO ---
 const (
 	GENESIS        = "GENESIS"
+        INVITE         = "INVITE"
 	PAYMENT        = "PAYMENT"
 	SETTLE         = "SETTLE"
 	MESSAGE        = "MESSAGE"
@@ -90,6 +92,7 @@ type Event struct {
 	ID         string `json:"id"`
 	Type       string `json:"type"`
 	ParentHash string `json:"parent_hash"`
+        ParentRefs []string `json:"parent_refs"` // Riferimenti a genitori recenti
 	Sender     string `json:"sender"`
 	Recipient  string `json:"recipient"`
 	Amount     int64  `json:"amount"`
@@ -115,11 +118,12 @@ type AnchorRecord struct {
 
 // --- METODI DELL'EVENTO ---
 
-// NewEvent crea un nuovo evento vuoto
-func NewEvent(eventType, parentHash, sender, recipient string, amount int64, timestamp int64, nonce uint64, ttlSeconds int64, memo string) Event {
+// NewEvent crea un nuovo evento vuoto con supporto DAG multi-parent
+func NewEvent(eventType, parentHash string, parentRefs []string, sender, recipient string, amount int64, timestamp int64, nonce uint64, ttlSeconds int64, memo string) Event {
 	ev := Event{
 		Type:       eventType,
 		ParentHash: parentHash,
+		ParentRefs: parentRefs, // 🔗 Riferimenti a genitori recenti
 		Sender:     sender,
 		Recipient:  recipient,
 		Amount:     amount,
@@ -132,17 +136,21 @@ func NewEvent(eventType, parentHash, sender, recipient string, amount int64, tim
 
 	// Calcola la scadenza se il TTL è specificato
 	if ttlSeconds > 0 {
-		ev.ExpiresAt = timestamp + (ttlSeconds * 1000000000) // Converti secondi in nanosecondi
+		ev.ExpiresAt = timestamp + (ttlSeconds * 1000000000)
 	}
+
+	// 🔥 CRUCIALE: Calcola l'ID dell'evento basandosi su TUTTI i campi, PRIMA che venga firmato!
+	ev.CalculateID()
 
 	return ev
 }
 
 // CalculateID calcola l'ID univoco dell'evento basato sui suoi campi
-// NOTA: Include Nonce e TTLSeconds per prevenire manipolazioni
+// NOTA: Include ParentRefs per garantire che la struttura del DAG sia parte dell'identità dell'evento
 func (e *Event) CalculateID() {
-	data := fmt.Sprintf("%s|%s|%s|%s|%d|%d|%d|%d|%s",
-		e.Type, e.ParentHash, e.Sender, e.Recipient,
+	refsStr := strings.Join(e.ParentRefs, ",")
+	data := fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d|%d|%d|%s",
+		e.Type, e.ParentHash, refsStr, e.Sender, e.Recipient,
 		e.Amount, e.Timestamp, e.Nonce, e.TTLSeconds, e.Memo)
 	hash := sha256.Sum256([]byte(data))
 	e.ID = hex.EncodeToString(hash[:])
